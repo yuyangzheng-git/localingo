@@ -1,0 +1,19 @@
+[project]
+name = "web-translator"
+version = "0.1.0"
+description = "Local English-to-Chinese webpage translation engine (MLX + Chrome extension)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "datasets>=5.1.0",
+    "fastapi>=0.115.0",
+    "mlx-lm>=0.32.0",
+    "uvicorn>=0.34.0",
+]
+
+[project.scripts]
+web-translator = "web_translator:main"
+
+[build-system]
+requires = ["uv_build>=0.12.17,<0.13.0"]
+build-backend = "uv_build"

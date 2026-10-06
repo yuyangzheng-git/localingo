@@ -1,0 +1,81 @@
+body {
+  font: 14px/1.4 -apple-system, system-ui, sans-serif;
+  width: 260px;
+  margin: 0;
+  padding: 16px;
+  color: #111;
+}
+
+h1 {
+  font-size: 16px;
+  margin: 0 0 4px;
+}
+
+.status {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 0 0 12px;
+}
+
+.status.ok {
+  color: #16a34a;
+}
+
+.status.error {
+  color: #dc2626;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+button {
+  padding: 9px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+button:hover {
+  background: #f3f4f6;
+}
+
+button.primary {
+  background: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
+}
+
+button.primary:hover {
+  background: #1d4ed8;
+}
+
+.last-stats {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 0 0 12px;
+}
+
+.last-stats:empty {
+  display: none;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+input {
+  padding: 7px 9px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 13px;
+}

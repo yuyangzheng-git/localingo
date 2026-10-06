@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Web Translator</h1>
+      <p class="status" id="status">Checking server…</p>
+    </header>
+    <div class="actions">
+      <button id="translate" class="primary">Translate this page</button>
+      <button id="restore">Remove translations</button>
+    </div>
+    <p class="last-stats" id="lastStats"></p>
+    <label class="field">
+      <span>Server URL</span>
+      <input id="serverUrl" type="text" placeholder="http://127.0.0.1:8765" spellcheck="false" />
+    </label>
+    <script src="popup.js"></script>
+  </body>
+</html>
