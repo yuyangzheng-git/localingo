@@ -5,6 +5,10 @@
 [![Model on HF](https://img.shields.io/badge/🤗%20Model-ZachacyZ%2Fqwen3--1.7b--web--v3a--merged-yellow)](https://huggingface.co/ZachacyZ/qwen3-1.7b-web-v3a-merged)
 [![Model on ModelScope](https://img.shields.io/badge/魔搭-ModelScope-624aff)](https://modelscope.cn/models/ZacharyZhg/qwen3-1.7b-web-v3a-merged)
 
+<p align="center">
+  <img src="docs/images/hero.png" alt="LocaLingo — bilingual web translation, entirely on your Mac" width="100%">
+</p>
+
 A private Chrome extension that translates web pages **English → Simplified Chinese**,
 bilingual paragraph by paragraph, entirely on your Mac — no API key, no cloud. A local
 [MLX](https://github.com/ml-explore/mlx) model does the translation, so the page text
@@ -12,6 +16,10 @@ never leaves your machine.
 
 > **Local** + **lingo** — translation that runs where the words are: on your machine.
 > No account, no cloud, no API key. Just the page, turned bilingual.
+
+<p align="center">
+  <img src="docs/images/demo.png" alt="A web article with Simplified Chinese appended below each English paragraph" width="100%">
+</p>
 
 ## Features
 
@@ -31,12 +39,15 @@ never leaves your machine.
 - **Selection translation** — select text → right-click → *翻译成中文* shows a
   floating tooltip.
 
+<p align="center">
+  <img src="docs/images/selection.png" alt="Select text, right-click, and a floating translation tooltip appears" width="80%">
+</p>
+
 ## How it works
 
-```
-Chrome extension (MV3)  ──HTTP──▶  local FastAPI server (uvicorn)
-                                      └─ MLX fine-tuned Qwen3-1.7B model
-```
+<p align="center">
+  <img src="docs/images/architecture.png" alt="Chrome extension → local FastAPI server → MLX fine-tuned Qwen3-1.7B model" width="100%">
+</p>
 
 The extension finds the page's content root (`main`/`article`), walks its block
 elements, translates each one as a whole from its plain text, and appends the
@@ -117,6 +128,10 @@ To bring in a new ModelScope model:
 
 A Qwen LoRA adapter can alternatively be loaded unmerged via
 `WEB_TRANSLATOR_ADAPTER` (a local PEFT dir); see `translator.py`.
+
+<p align="center">
+  <img src="docs/images/privacy.png" alt="Your page text never leaves your Mac" width="80%">
+</p>
 
 ## Notes
 
