@@ -11,14 +11,15 @@ from .prompt import (
     parse_batch_response,
 )
 
-DEFAULT_MODEL = "mlx-community/Qwen3-1.7B-4bit"
+DEFAULT_MODEL = os.path.expanduser("~/models/qwen3-1.7b-web-v3a-mlx")
 
 
 class Translator:
     """Wraps an MLX chat model and translates text segments EN -> zh-CN."""
 
-    def __init__(self, model_id: str | None = None) -> None:
+    def __init__(self, model_id: str | None = None, adapter_path: str | None = None) -> None:
         self.model_id = model_id or os.environ.get("WEB_TRANSLATOR_MODEL", DEFAULT_MODEL)
+        self.adapter_path = adapter_path or os.environ.get("WEB_TRANSLATOR_ADAPTER") or None
         self.model = None
         self.tokenizer = None
 
@@ -32,7 +33,7 @@ class Translator:
             return
         from mlx_lm import load
 
-        self.model, self.tokenizer = load(self.model_id)
+        self.model, self.tokenizer = load(self.model_id, adapter_path=self.adapter_path)
 
     def _generate(self, messages: list[dict], max_tokens: int) -> str:
         from mlx_lm import generate
