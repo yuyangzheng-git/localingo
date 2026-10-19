@@ -32,8 +32,11 @@ never leaves your machine.
   word order (never fragmented text nodes).
 - **Translate as you scroll** — visible text translates first, then more as you
   scroll, with a per-paragraph loading spinner.
-- **Persistent cache** — translations are saved per URL, so scroll-backs and page
-  reloads don't re-translate.
+- **Batched requests** — visible paragraphs are sent to the model a few at a time,
+  not one request per paragraph.
+- **Persistent cache** — translations are saved per page (URL without `#hash`), so
+  scroll-backs and page reloads don't re-translate; the oldest pages are evicted
+  after 200.
 - **Completion counter** — a toast reports `Translated N · cached N · failed N ·
   skipped N` so you know the page has finished.
 - **Selection translation** — select text → right-click → *翻译成中文* shows a
@@ -62,38 +65,53 @@ Requires Python 3.12+ and an Apple Silicon Mac, managed with [uv](https://docs.a
 uv sync
 ```
 
+Get the model. The server uses `~/models/qwen3-1.7b-web-v3a-mlx` if it exists;
+otherwise it downloads [ZachacyZ/qwen3-1.7b-web-v3a-merged](https://huggingface.co/ZachacyZ/qwen3-1.7b-web-v3a-merged)
+from Hugging Face on first use (unquantized, ~3.4 GB). For faster, smaller 4-bit weights, convert it once:
+
+```bash
+uv run mlx_lm.convert --hf-path ZachacyZ/qwen3-1.7b-web-v3a-merged -q --q-bits 4 \
+  --mlx-path ~/models/qwen3-1.7b-web-v3a-mlx
+```
+
 ## Run the translation server
 
 ```bash
 uv run web-translator
 ```
 
-Starts the server on `http://127.0.0.1:8765`. The model loads lazily on the first
-request (the first translation is slow; later ones are fast). Keep it running while
-you browse — or set up the launchd agent so it starts at login.
+Starts the server on `http://127.0.0.1:8765` and prints an **auth token**. On first
+run the token is generated randomly and saved to `~/.config/localingo/token`, so it
+stays the same across restarts. The model loads lazily on the first request (the
+first translation is slow; later ones are fast). Keep the server running while you browse.
 
 ## Load the extension
 
 1. Open `chrome://extensions`.
 2. Enable **Developer mode** (top-right).
 3. Click **Load unpacked** and select the `extension/` directory.
+4. Click the extension icon and paste the token printed by the server into **Auth token**.
 
 ## Configuration
 
 | Env var | Default | Purpose |
 | --- | --- | --- |
-| `WEB_TRANSLATOR_MODEL` | `~/models/qwen3-1.7b-web-v3a-mlx` | Model id or local path to load (a custom Qwen3-1.7B translation fine-tune) |
+| `WEB_TRANSLATOR_MODEL` | `~/models/qwen3-1.7b-web-v3a-mlx`, else `ZachacyZ/qwen3-1.7b-web-v3a-merged` | Model id or local path to load (a custom Qwen3-1.7B translation fine-tune) |
 | `WEB_TRANSLATOR_ADAPTER` | *(none)* | Local path to a LoRA adapter dir (`adapter_config.json` + safetensors) to load on top of the model |
 | `WEB_TRANSLATOR_PORT` | `8765` | Server port |
-| `WEB_TRANSLATOR_TOKEN` | `web-translator-local-token` | Shared auth token (must match the extension's `background.js`) |
+| `WEB_TRANSLATOR_TOKEN` | *(random, from the token file)* | Override the shared auth token (paste the same value into the popup) |
+| `WEB_TRANSLATOR_TOKEN_FILE` | `~/.config/localingo/token` | Where the generated token is stored |
 
-The server binds to `127.0.0.1` only and requires the auth token, so other sites can't use it.
+The server binds to `127.0.0.1` only. CORS only allows `chrome-extension://` origins, and
+every `/translate` call needs the per-machine token, so other websites open in your
+browser can't drive your local model.
 
 ## API
 
-- `GET /health` — `{"status": "ok", "model": "...", "loaded": false}`
+- `GET /health` — `{"status": "ok", "model": "...", "loaded": false, "authorized": false}`
+  (`authorized` is true when a valid `X-Auth-Token` header is sent)
 - `POST /translate` — body `{"texts": ["...", "..."]}` → `{"translations": ["...", "..."]}`
-  (requires `X-Auth-Token` header)
+  (requires `X-Auth-Token` header; at most 64 texts of up to 4000 characters each)
 
 ## Model
 
@@ -133,10 +151,17 @@ A Qwen LoRA adapter can alternatively be loaded unmerged via
   <img src="docs/images/privacy.png" alt="Your page text never leaves your Mac" width="80%">
 </p>
 
+## Development
+
+```bash
+uv run pytest
+```
+
 ## Notes
 
 - Code blocks (`<code>`, `<pre>`) and form fields are intentionally left untranslated.
-- Short labels (< 2 chars) and pure numbers/symbols are skipped.
+- Short labels (< 2 chars) and text with no Latin letters (numbers, symbols, text
+  that is already Chinese) are skipped.
 - Inline links are flattened to plain text in v1: the 1.7B model doesn't reliably
   preserve placeholder markers through translation. Link/anchor preservation is
   planned for the later LoRA / larger-model pass.

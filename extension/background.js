@@ -1,22 +1,35 @@
 // Service worker: context menu for selection translation + message routing to the local server.
 
 const DEFAULT_SERVER_URL = "http://127.0.0.1:8765";
-const AUTH_TOKEN = "web-translator-local-token";
 
 async function getServerUrl() {
   const { serverUrl } = await chrome.storage.sync.get({ serverUrl: DEFAULT_SERVER_URL });
   return (serverUrl || DEFAULT_SERVER_URL).replace(/\/+$/, "");
 }
 
+// The token is printed by `uv run web-translator` and pasted into the popup.
+// Kept in storage.local (not sync) so it stays on this machine.
+async function getAuthToken() {
+  const { authToken } = await chrome.storage.local.get({ authToken: "" });
+  return authToken;
+}
+
 async function translateTexts(texts) {
+  const token = await getAuthToken();
+  if (!token) {
+    throw new Error("no auth token — paste the server's token into the extension popup");
+  }
   const resp = await fetch(`${await getServerUrl()}/translate`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Auth-Token": AUTH_TOKEN,
+      "X-Auth-Token": token,
     },
     body: JSON.stringify({ texts }),
   });
+  if (resp.status === 401) {
+    throw new Error("auth token rejected — copy the current token from the server into the popup");
+  }
   if (!resp.ok) {
     throw new Error(`server error ${resp.status}: ${await resp.text()}`);
   }
@@ -26,7 +39,9 @@ async function translateTexts(texts) {
 
 async function checkHealth() {
   try {
-    const resp = await fetch(`${await getServerUrl()}/health`);
+    const resp = await fetch(`${await getServerUrl()}/health`, {
+      headers: { "X-Auth-Token": await getAuthToken() },
+    });
     return resp.ok ? await resp.json() : null;
   } catch {
     return null;

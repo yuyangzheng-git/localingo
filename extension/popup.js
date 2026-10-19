@@ -2,6 +2,7 @@ const DEFAULT_SERVER_URL = "http://127.0.0.1:8765";
 
 const statusEl = document.getElementById("status");
 const serverUrlEl = document.getElementById("serverUrl");
+const authTokenEl = document.getElementById("authToken");
 const translateBtn = document.getElementById("translate");
 const restoreBtn = document.getElementById("restore");
 const lastStatsEl = document.getElementById("lastStats");
@@ -14,9 +15,18 @@ async function getActiveTab() {
 async function checkHealth() {
   try {
     const url = serverUrlEl.value.trim().replace(/\/+$/, "");
-    const resp = await fetch(`${url}/health`);
+    const resp = await fetch(`${url}/health`, {
+      headers: { "X-Auth-Token": authTokenEl.value.trim() },
+    });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
+    if (!data.authorized) {
+      statusEl.textContent = authTokenEl.value.trim()
+        ? "Server online, but the auth token is wrong. Copy it from the server output."
+        : "Server online. Paste the auth token printed by the server below.";
+      statusEl.className = "status error";
+      return;
+    }
     statusEl.textContent = `Server online — ${data.model}${data.loaded ? " (loaded)" : ""}`;
     statusEl.className = "status ok";
   } catch {
@@ -54,6 +64,8 @@ restoreBtn.addEventListener("click", async () => {
 async function init() {
   const { serverUrl } = await chrome.storage.sync.get({ serverUrl: DEFAULT_SERVER_URL });
   serverUrlEl.value = serverUrl || DEFAULT_SERVER_URL;
+  const { authToken } = await chrome.storage.local.get({ authToken: "" });
+  authTokenEl.value = authToken;
 
   try {
     const { "wt:lastStats": last } = await chrome.storage.session.get("wt:lastStats");
@@ -64,6 +76,11 @@ async function init() {
 
   serverUrlEl.addEventListener("change", () => {
     chrome.storage.sync.set({ serverUrl: serverUrlEl.value.trim() || DEFAULT_SERVER_URL });
+    checkHealth();
+  });
+
+  authTokenEl.addEventListener("change", () => {
+    chrome.storage.local.set({ authToken: authTokenEl.value.trim() });
     checkHealth();
   });
 

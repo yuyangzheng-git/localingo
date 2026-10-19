@@ -6,7 +6,7 @@
   </head>
   <body>
     <header>
-      <h1>Web Translator</h1>
+      <h1>LocaLingo</h1>
       <p class="status" id="status">Checking server…</p>
     </header>
     <div class="actions">
@@ -17,6 +17,10 @@
     <label class="field">
       <span>Server URL</span>
       <input id="serverUrl" type="text" placeholder="http://127.0.0.1:8765" spellcheck="false" />
+    </label>
+    <label class="field">
+      <span>Auth token</span>
+      <input id="authToken" type="password" placeholder="printed by: uv run web-translator" spellcheck="false" autocomplete="off" />
     </label>
     <script src="popup.js"></script>
   </body>

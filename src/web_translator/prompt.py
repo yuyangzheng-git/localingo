@@ -31,8 +31,12 @@ BATCH_SYSTEM_PROMPT = (
 
 
 def format_batch_prompt(texts: list[str]) -> str:
-    """Format a list of segments as a numbered list for the model."""
-    return "\n".join(f"{i + 1}. {text}" for i, text in enumerate(texts))
+    """Format a list of segments as a numbered list for the model.
+
+    Newlines inside a segment are collapsed to spaces so every segment stays on
+    exactly one numbered line (otherwise the response can't be parsed back).
+    """
+    return "\n".join(f"{i + 1}. {' '.join(text.split())}" for i, text in enumerate(texts))
 
 
 def parse_batch_response(response: str, expected: int) -> list[str]:
@@ -58,5 +62,6 @@ def parse_batch_response(response: str, expected: int) -> list[str]:
         if not 1 <= idx <= expected:
             continue
         rest = line[i:].lstrip(".、)）:： \t")
-        translations[idx - 1] = rest
+        if not translations[idx - 1]:  # keep the first answer for each number
+            translations[idx - 1] = rest
     return translations

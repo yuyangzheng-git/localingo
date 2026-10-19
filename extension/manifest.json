@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Web Translator",
-  "version": "0.1.0",
+  "name": "LocaLingo",
+  "version": "0.2.0",
   "description": "Local English → Simplified Chinese page translation via a local MLX server.",
   "permissions": ["activeTab", "contextMenus", "storage", "scripting"],
   "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
@@ -26,7 +26,7 @@
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Web Translator",
+    "default_title": "LocaLingo",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
