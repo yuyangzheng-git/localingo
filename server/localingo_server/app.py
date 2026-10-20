@@ -19,7 +19,7 @@ from .dictionary import Dictionary
 log = logging.getLogger("localingo")
 
 # Files of the extension that make up the hosted web app (nothing else is served).
-WEB_FILES = {"learn.html"}
+WEB_FILES = {"index.html", "index.css", "learn.html"}
 WEB_DIRS = {"learn", "learning", "icons"}
 CSP = (
     "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
@@ -197,7 +197,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/")
     def index() -> FileResponse:
-        return FileResponse(web_root / "learn.html", media_type="text/html; charset=utf-8")
+        # Landing page (project introduction) with the entry into the learning center.
+        return FileResponse(web_root / "index.html", media_type="text/html; charset=utf-8")
 
     @app.get("/{path:path}")
     def static(path: str):

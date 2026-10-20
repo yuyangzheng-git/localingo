@@ -33,8 +33,9 @@ learn.example.com {
 }
 ```
 
-Then open `https://learn.example.com`, sign in, and in the extension's learning center
-(设置 → 同步) enter the same address and account.
+Then open `https://learn.example.com`. The root is a project-introduction landing
+page — click 「进入我的个人空间」 to reach the learning center, sign in, and in the
+extension's learning center (设置 → 同步) enter the same address and account.
 
 ### Accounts
 

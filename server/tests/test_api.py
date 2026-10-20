@@ -35,6 +35,8 @@ def settings(tmp_path):
     web = tmp_path / "web"
     (web / "learn").mkdir(parents=True)
     (web / "learn.html").write_text("<!doctype html><title>Learn</title>")
+    (web / "index.html").write_text("<!doctype html><title>LocaLingo</title><a href='/learn.html'>进入我的个人空间</a>")
+    (web / "index.css").write_text("body{}")
     (web / "learn" / "learn.js").write_text("console.log(1)")
     (web / "manifest.json").write_text("{}")
     (tmp_path / "secret.txt").write_text("nope")
@@ -175,8 +177,10 @@ def test_dictionary_api(client):
 
 def test_web_app_files_only(client):
     r = client.get("/")
-    assert r.status_code == 200 and "Learn" in r.text
+    assert r.status_code == 200 and "LocaLingo" in r.text and "进入我的个人空间" in r.text
     assert "default-src 'self'" in r.headers["content-security-policy"]
+    assert client.get("/index.css").status_code == 200
+    assert client.get("/learn.html").status_code == 200
     assert client.get("/learn/learn.js").status_code == 200
     assert client.get("/manifest.json").status_code == 404
     assert client.get("/learn/../../secret.txt").status_code == 404

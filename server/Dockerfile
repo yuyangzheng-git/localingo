@@ -30,6 +30,8 @@ COPY server/pyproject.toml server/README.md /app/server/
 COPY server/localingo_server /app/server/localingo_server
 RUN pip install --no-cache-dir /app/server
 COPY extension/learn.html /app/web/learn.html
+COPY extension/index.html /app/web/index.html
+COPY extension/index.css /app/web/index.css
 COPY extension/learn /app/web/learn
 COPY extension/learning /app/web/learning
 COPY extension/icons /app/web/icons
