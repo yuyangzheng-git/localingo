@@ -51,6 +51,8 @@ Self-service sign-up is off; set `LOCALINGO_ALLOW_SIGNUP=true` to allow it.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `LOCALINGO_DATA` | `/data` | SQLite databases (accounts + records, dictionary index) |
+| `LOCALINGO_BIND` | `127.0.0.1` | Host address the container port is published on (`0.0.0.0` to expose directly) |
+| `LOCALINGO_PORT` | `8080` | Host port the web app is published on |
 | `LOCALINGO_DICT_VARIANT` | `base` | Dictionary package used by the web app's lookups (`base` or `full`) |
 | `LOCALINGO_ALLOW_SIGNUP` | `false` | Allow `/api/auth/signup` |
 | `LOCALINGO_ADMIN_USER` / `_PASSWORD` | — | Create this account on start if missing |
