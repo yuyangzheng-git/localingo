@@ -1,7 +1,7 @@
 # LocaLingo deployment
 
 - Project checkout: `/Users/yuyangzheng/project/localingo`.
-- Production website: `http://101.35.6.63/`.
+- Production website: `http://101.35.6.63:8083/` (port 80 is a separate personal site).
 - SSH host: `101.35.6.63`; user: `ubuntu`.
 - The remote checkout directory and deployment mechanism must be verified on the server before updating it.
 - Inspect remote Git status and running services first; preserve local changes, deployment configuration, and persistent data.
