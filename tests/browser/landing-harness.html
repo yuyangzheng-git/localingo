@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>landing harness</title>
+    <link rel="stylesheet" href="/extension/index.css" />
+  </head>
+  <body>
+    <!-- Minimal copy of the landing page demo window, for headless interaction checks. -->
+    <div class="demo-stage" data-state="default">
+      <figure class="reading-demo">
+        <div class="demo-toolbar">
+          <div class="window-lights" role="group" aria-label="Demo window controls">
+            <button type="button" class="win-light win-close" aria-label="Close demo window"></button>
+            <button type="button" class="win-light win-min" aria-label="Minimize demo window"></button>
+            <button type="button" class="win-light win-zoom" aria-label="Zoom demo window"></button>
+          </div>
+          <span>YOUR NEXT GOOD READ</span><span class="demo-mode">EN / 中</span>
+        </div>
+        <div class="article"><p class="article-text">Hello <mark>curiosity</mark>.</p></div>
+        <figcaption>demo</figcaption>
+      </figure>
+      <button type="button" class="demo-dock" aria-label="Reopen demo window"><span>Reopen</span></button>
+    </div>
+    <div class="demo-backdrop"></div>
+    <script src="/extension/landing.js"></script>
+    <script>
+      const results = [];
+      const t = (name, ok) => results.push((ok ? "PASS " : "FAIL ") + name);
+      const stage = document.querySelector(".demo-stage");
+      const demo = document.querySelector(".reading-demo");
+      const dock = document.querySelector(".demo-dock");
+      const backdrop = document.querySelector(".demo-backdrop");
+      const q = (s) => stage.querySelector(s);
+
+      t("initial-state", stage.dataset.state === "default");
+      q(".win-close").click();
+      t("close-hides-window", demo.classList.contains("is-closed") && stage.classList.contains("is-restore"));
+      dock.click();
+      t("dock-reopens", stage.dataset.state === "default" && !demo.classList.contains("is-closed"));
+
+      q(".win-min").click();
+      t("minimize-hides-window", demo.classList.contains("is-minimized") && stage.classList.contains("is-restore"));
+      dock.click();
+      t("dock-reopens-after-min", stage.dataset.state === "default");
+
+      q(".win-zoom").click();
+      t("zoom-expands", demo.classList.contains("is-zoomed") && backdrop.classList.contains("is-on") && document.body.classList.contains("is-locked"));
+      q(".win-zoom").click();
+      t("zoom-toggles-off", stage.dataset.state === "default" && !backdrop.classList.contains("is-on"));
+
+      q(".win-zoom").click();
+      backdrop.click();
+      t("backdrop-closes-zoom", stage.dataset.state === "default");
+
+      q(".win-zoom").click();
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      t("esc-closes-zoom", stage.dataset.state === "default");
+
+      q(".win-close").click();
+      t("tilt-cleared-when-hidden", stage.style.getPropertyValue("--tilt-x") === "0deg" || stage.style.getPropertyValue("--tilt-x") === "");
+      dock.click();
+
+      // dblclick on the toolbar (not on a light) toggles zoom
+      const toolbar = stage.querySelector(".demo-toolbar");
+      toolbar.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+      t("dblclick-toggles-zoom", stage.dataset.state === "zoomed");
+      toolbar.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+      t("dblclick-toggles-back", stage.dataset.state === "default");
+
+      document.title = results.join(" | ");
+      window.__harnessResults = results;
+    </script>
+  </body>
+</html>
