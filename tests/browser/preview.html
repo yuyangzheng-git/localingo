@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  /><title>LocaLingo · Interaction preview</title>
+  <style>
+    body {
+      margin: 0;
+      background: #e8ece6;
+      color: #283d32;
+      font:
+        14px/1.6 system-ui,
+        sans-serif;
+      padding: 34px;
+    }
+    h1 {
+      font-size: 27px;
+      letter-spacing: -1px;
+      margin: 0;
+    }
+    p {
+      margin: 6px 0 14px;
+      color: #637368;
+    }
+    nav {
+      display: flex;
+      gap: 18px;
+      flex-wrap: wrap;
+      margin: 12px 0 25px;
+    }
+    a {
+      color: #285e50;
+    }
+    .stage {
+      display: flex;
+      gap: 30px;
+      align-items: flex-start;
+      justify-content: center;
+    }
+    iframe {
+      border: 0;
+      border-radius: 16px;
+      box-shadow: 0 18px 50px #26382c18;
+      background: white;
+    }
+    #popup {
+      width: 376px;
+      height: 780px;
+    }
+    #article {
+      width: min(650px, 55vw);
+      height: 780px;
+    }
+    .label {
+      font-size: 11px;
+      letter-spacing: 2px;
+      margin-bottom: 9px;
+    }
+    button {
+      font: inherit;
+      border: 1px solid #9eafa1;
+      background: white;
+      border-radius: 8px;
+      padding: 5px 12px;
+      color: #285e50;
+      cursor: pointer;
+    }
+    @media (max-width: 760px) {
+      body {
+        padding: 16px;
+      }
+      .stage {
+        display: block;
+      }
+      #popup {
+        max-width: 100%;
+        margin-bottom: 25px;
+      }
+      #article {
+        width: 100%;
+      }
+    }
+  </style>
+  <h1>LocaLingo — read without interruption.</h1>
+  <p>
+    Interactive extension fixture · mock translations, no model calls or real
+    credentials.
+  </p>
+  <nav>
+    <a href="?scenario=ready">Ready</a
+    ><a href="?scenario=failed">Partial failure</a
+    ><a href="?scenario=offline">Offline</a
+    ><a href="?scenario=token">Missing token</a
+    ><a href="?scenario=blocked">Unsupported page</a
+    ><a href="?scenario=legacy">Old server</a
+    ><button id="connect">Make service available</button
+    ><button id="append">Append live content</button
+    ><button id="change">Change source paragraph</button>
+  </nav>
+  <div class="stage">
+    <div>
+      <div class="label">READING CONTROLS</div>
+      <iframe id="popup" title="LocaLingo popup"></iframe>
+    </div>
+    <div>
+      <div class="label">LIVE ARTICLE</div>
+      <iframe id="article" title="Translation test article"></iframe>
+    </div>
+  </div>
+  <script src="bridge.js"></script>
+  <script>
+    document.querySelector("#article").onload = () => {
+      document.querySelector("#popup").src = "/extension/popup.html";
+    };
+    document.querySelector("#article").src = "article.html";
+  </script>
+</html>

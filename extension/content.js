@@ -22,10 +22,15 @@
 // keep placeholder markers through translation); links are flattened to plain text.
 
 (() => {
+  // A tab opened before installation can be injected by the popup. Avoid
+  // registering observers and message handlers twice if injection races a reload.
+  if (globalThis.__localingoContentLoaded) return;
+  globalThis.__localingoContentLoaded = true;
   const MSG_TRANSLATE_PAGE = "web-translator:translate-page";
   const MSG_RESTORE_PAGE = "web-translator:restore-page";
   const MSG_TOGGLE = "web-translator:toggle";
   const MSG_STATS = "web-translator:stats";
+  const MSG_RETRY = "web-translator:retry-failed";
   const MSG_SHOW_RESULT = "show-result";
 
   const SKIP_TAGS = new Set([
@@ -92,6 +97,8 @@
   let queue = [];
   let processing = false;
   let lastError = null;
+  let inFlight = 0;
+  const failedUnits = new Map();
 
   let cache = null;
   let cacheKey = null;
@@ -606,9 +613,12 @@
         return; // the text changed while translating; the live-update pass redoes it
       }
       if (!translation) {
-        stats.failed++;
+        failedUnits.set(keyOf(item.unit), item.unit);
+        stats.failed = failedUnits.size;
         return;
       }
+      failedUnits.delete(keyOf(item.unit));
+      stats.failed = failedUnits.size;
       appendTranslation(item.unit, translation, item.text);
       c[item.text] = translation;
       stats.translated++;
@@ -664,10 +674,16 @@
           const done = stats.translated + stats.cached;
           showToast(`正在翻译… 已完成 ${done} 段，队列中 ${queue.length + batch.length} 段`, "progress");
         }
+        const batchSession = session;
         try {
+          inFlight = batch.length;
           await translateBatch(batch);
         } finally {
-          for (const item of batch) pending.delete(keyOf(item.unit));
+          inFlight = 0;
+          // Restore/restart may have replaced the pending set while we awaited.
+          if (batchSession === session) {
+            for (const item of batch) pending.delete(keyOf(item.unit));
+          }
         }
       }
     } finally {
@@ -811,9 +827,9 @@
     });
 
     // Visible text translates now; the rest as it scrolls into view.
-    for (const unit of collectUnits(root, true)) observeUnit(unit);
-
-    showToast("正在翻译… 滚动页面会继续翻译后面的内容", "progress");
+    const units = collectUnits(root, true);
+    for (const unit of units) observeUnit(unit);
+    showToast(units.length ? "阅读翻译已开启，滚动时会自动翻译英文正文" : "没有找到可翻译的英文正文", "info");
   }
 
   function stopTranslating() {
@@ -851,11 +867,25 @@
   }
 
   function resetStats() {
+    failedUnits.clear();
     stats.collected = 0;
     stats.translated = 0;
     stats.cached = 0;
     stats.failed = 0;
     stats.skipped = 0;
+  }
+
+  function retryFailed() {
+    if (!intersectionObserver || processing) return;
+    const units = [...failedUnits.values()];
+    failedUnits.clear();
+    stats.failed = 0;
+    lastError = null;
+    for (const unit of units) {
+      if (!isLive(unit)) continue;
+      unit.live = false;
+      enqueue(unit);
+    }
   }
 
   loadSettings();
@@ -885,11 +915,25 @@
       return;
     }
     if (message.type === MSG_STATS) {
+      // Discard failures whose source nodes have disappeared or been translated.
+      for (const [key, unit] of failedUnits) {
+        if (!isLive(unit)) failedUnits.delete(key);
+      }
+      stats.failed = failedUnits.size;
       sendResponse({
         ok: true,
         stats: { ...stats },
         active: !!intersectionObserver || cnBlocks.size > 0,
+        processing: !!intersectionObserver && processing,
+        queued: queue.length,
+        inFlight: intersectionObserver ? inFlight : 0,
+        waiting: [...observed.values()].reduce((sum, units) => sum + units.length, 0),
       });
+      return;
+    }
+    if (message.type === MSG_RETRY) {
+      retryFailed();
+      sendResponse({ ok: true });
       return;
     }
     if (message.type === MSG_SHOW_RESULT) {

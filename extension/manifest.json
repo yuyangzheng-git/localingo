@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LocaLingo",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Local English → Simplified Chinese page translation via a local MLX server.",
   "permissions": ["activeTab", "contextMenus", "storage", "scripting"],
   "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],

@@ -23,8 +23,13 @@ never leaves your machine.
 
 ## Features
 
+- **Current-page controls** — the popup shows the active article, live paragraph
+  counts, and clear translating / reading / restore states. Failed paragraphs can
+  be retried without removing successful translations.
+- **Guided connection** — explicit Save & Connect, a five-second health timeout,
+  local-address validation, and a separate warning for older server versions.
 - **Bilingual** — article text, headings, and captions keep the original English,
-  with the Simplified Chinese appended below in a subtle highlighted block.
+  with Simplified Chinese appended below using the page's own typography.
 - **Two display modes** — *bilingual* (Chinese below each paragraph) or *translation
   only* (the original is hidden; hover a paragraph to see it). Switch anytime from the
   popup; the page updates live.
@@ -165,7 +170,19 @@ A Qwen LoRA adapter can alternatively be loaded unmerged via
 
 ```bash
 uv run pytest
+node --test tests/test_popup.mjs
 ```
+
+For an interactive UI fixture (mock translations, no real tokens or model calls):
+
+```bash
+node tests/browser/serve.mjs
+```
+
+Open `http://127.0.0.1:8791/tests/browser/preview.html`. See
+[the UI and interaction review](docs/UX_REVIEW.md) for implemented improvements,
+known limitations, and the next priorities. Reload the unpacked extension after
+updating it. A running older backend must be restarted from this project directory.
 
 ## Notes
 

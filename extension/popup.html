@@ -2,79 +2,199 @@
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LocaLingo · 读懂，不打断</title>
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
     <header class="header">
-      <img class="logo" src="icons/icon48.png" alt="" width="28" height="28" />
-      <div class="brand">
-        <h1>LocaLingo</h1>
-        <p class="tagline">本地英译中 · 不上传任何内容</p>
+      <div class="identity">
+        <img src="icons/mark.svg" alt="" width="32" height="32" />
+        <div>
+          <h1>LocaLingo<span>.</span></h1>
+          <p>读懂，不打断。</p>
+        </div>
       </div>
-      <span class="pill" id="status" data-state="checking" title="">
-        <span class="dot"></span><span id="statusText">检查中</span>
-      </span>
-    </header>
-
-    <p class="notice" id="notice" hidden></p>
-
-    <section class="main-action">
-      <button id="toggle" class="primary" type="button">
-        <span id="toggleLabel">翻译此页</span>
-        <kbd>Alt+T</kbd>
+      <button
+        class="status"
+        id="status"
+        data-state="checking"
+        type="button"
+        aria-label="重新检查本地服务"
+      >
+        <span class="dot" aria-hidden="true"></span
+        ><span id="statusText">检查中</span>
       </button>
-      <p class="last-stats" id="lastStats"></p>
-    </section>
-
-    <section class="group">
-      <h2>显示方式</h2>
-      <div class="segmented" role="radiogroup" aria-label="显示方式" id="displayMode">
-        <button type="button" role="radio" data-value="bilingual">
-          <span class="seg-icon" aria-hidden="true">
-            <i class="l en"></i><i class="l cn"></i><i class="l en short"></i><i class="l cn short"></i>
-          </span>
-          双语对照
-        </button>
-        <button type="button" role="radio" data-value="translation">
-          <span class="seg-icon" aria-hidden="true">
-            <i class="l cn"></i><i class="l cn"></i><i class="l cn short"></i>
-          </span>
-          仅译文
-        </button>
-      </div>
-    </section>
-
-    <section class="group" id="styleGroup">
-      <h2>译文样式</h2>
-      <div class="styles" role="radiogroup" aria-label="译文样式" id="translationStyle">
-        <button type="button" role="radio" data-value="plain">
-          <span class="preview plain">译文</span>原样
-        </button>
-        <button type="button" role="radio" data-value="muted">
-          <span class="preview muted">译文</span>弱化
-        </button>
-        <button type="button" role="radio" data-value="underline">
-          <span class="preview underline">译文</span>下划线
+    </header>
+    <main>
+      <section class="page-card" aria-labelledby="pageTitle">
+        <div class="page-top">
+          <span class="eyebrow">THIS PAGE / 当前页面</span
+          ><span class="language"
+            >EN <span aria-hidden="true">→</span> 简体中文</span
+          >
+        </div>
+        <h2 id="pageTitle">正在读取页面…</h2>
+        <p class="page-host" id="pageHost">优先翻译正在阅读的内容</p>
+        <div class="page-state">
+          <span class="state-dot" id="pageDot" aria-hidden="true"></span>
+          <p id="pageState" role="status">正在检查页面</p>
+        </div>
+        <div class="activity" id="activity" hidden><span></span></div>
+        <div class="metrics" id="metrics" hidden aria-label="当前页翻译统计">
+          <div><strong id="translatedCount">0</strong><span>新翻译</span></div>
+          <div><strong id="cachedCount">0</strong><span>来自缓存</span></div>
+          <div><strong id="failedCount">0</strong><span>失败段落</span></div>
+        </div>
+      </section>
+      <div class="notice" id="notice" role="status" hidden></div>
+      <div class="page-error" id="pageError" hidden>
+        <p id="pageErrorText"></p>
+        <button id="retryFailed" class="text-button" type="button">
+          重试失败段落 <span aria-hidden="true">↻</span>
         </button>
       </div>
-    </section>
-
-    <details class="settings" id="settings">
-      <summary>服务器设置</summary>
-      <label class="field">
-        <span>服务器地址</span>
-        <input id="serverUrl" type="text" placeholder="http://127.0.0.1:8765" spellcheck="false" />
-      </label>
-      <label class="field">
-        <span>访问令牌</span>
-        <span class="input-row">
-          <input id="authToken" type="password" placeholder="粘贴服务器输出的令牌" spellcheck="false" autocomplete="off" />
-          <button type="button" class="ghost" id="revealToken" aria-label="显示令牌">显示</button>
-        </span>
-      </label>
-      <p class="hint">在终端运行 <code>uv run web-translator</code>，把输出中的令牌粘贴到这里。</p>
-    </details>
-
+      <section class="reading" aria-labelledby="readingTitle">
+        <div class="section-heading">
+          <h2 id="readingTitle">你的阅读方式</h2>
+          <span>即时应用</span>
+        </div>
+        <div
+          class="segmented"
+          role="radiogroup"
+          aria-label="显示方式"
+          id="displayMode"
+        >
+          <button
+            type="button"
+            role="radio"
+            data-value="bilingual"
+            aria-checked="true"
+            tabindex="0"
+          >
+            <span class="mode-drawing" aria-hidden="true"
+              ><i></i><i></i><i></i><i></i></span
+            ><span
+              ><strong>双语对照</strong><small>原文与译文一起读</small></span
+            ><span class="radio-dot" aria-hidden="true"></span>
+          </button>
+          <button
+            type="button"
+            role="radio"
+            data-value="translation"
+            aria-checked="false"
+            tabindex="-1"
+          >
+            <span class="mode-drawing translated" aria-hidden="true"
+              ><i></i><i></i><i></i></span
+            ><span><strong>仅看译文</strong><small>悬停可查看原文</small></span
+            ><span class="radio-dot" aria-hidden="true"></span>
+          </button>
+        </div>
+        <fieldset class="style-fieldset" id="styleGroup">
+          <legend>译文呈现</legend>
+          <div
+            class="styles"
+            role="radiogroup"
+            aria-label="译文样式"
+            id="translationStyle"
+          >
+            <button
+              type="button"
+              role="radio"
+              data-value="plain"
+              aria-checked="true"
+              tabindex="0"
+            >
+              <span class="sample">Aa</span>跟随原文</button
+            ><button
+              type="button"
+              role="radio"
+              data-value="muted"
+              aria-checked="false"
+              tabindex="-1"
+            >
+              <span class="sample muted">Aa</span>柔和</button
+            ><button
+              type="button"
+              role="radio"
+              data-value="underline"
+              aria-checked="false"
+              tabindex="-1"
+            >
+              <span class="sample underline">Aa</span>点状下划线
+            </button>
+          </div>
+          <p id="styleHint">保持网页原有的字体、字号与排版。</p>
+        </fieldset>
+      </section>
+      <section class="main-action" aria-label="翻译操作">
+        <button id="toggle" class="primary" type="button" disabled>
+          <span id="toggleLabel">正在准备…</span
+          ><span id="toggleIcon" aria-hidden="true">↗</span>
+        </button>
+        <p class="action-hint" id="actionHint">
+          翻译只在本机进行，无需云端 API。
+        </p>
+      </section>
+      <details class="settings" id="settings">
+        <summary>
+          <span>连接与设置</span><span id="connectionSummary">本地服务</span>
+        </summary>
+        <form id="connectionForm" novalidate>
+          <label class="field" for="serverUrl">本地服务器</label
+          ><input
+            id="serverUrl"
+            type="url"
+            placeholder="http://127.0.0.1:8765"
+            spellcheck="false"
+            autocomplete="off"
+            aria-describedby="serverHelp"
+          />
+          <p class="field-help" id="serverHelp">
+            支持 127.0.0.1 或 localhost，页面内容留在本机。
+          </p>
+          <label class="field" for="authToken">访问令牌</label>
+          <div class="input-row">
+            <input
+              id="authToken"
+              type="password"
+              placeholder="粘贴启动日志中的令牌"
+              spellcheck="false"
+              autocomplete="off"
+            /><button
+              type="button"
+              class="secondary reveal"
+              id="revealToken"
+              aria-label="显示令牌"
+              aria-pressed="false"
+            >
+              显示
+            </button>
+          </div>
+          <button type="submit" class="secondary connect" id="saveConnection">
+            保存并连接 <span aria-hidden="true">↗</span>
+          </button>
+          <p id="settingsFeedback" class="field-help" role="status"></p>
+          <div class="setup-help">
+            <span>还没启动服务？在项目目录运行</span>
+            <div>
+              <code>uv run web-translator</code
+              ><button type="button" class="text-button" id="copyCommand">
+                复制
+              </button>
+            </div>
+            <p>首次翻译可能需要下载或加载模型，请耐心等待。</p>
+          </div>
+        </form>
+      </details>
+    </main>
+    <footer>
+      <span
+        ><span class="privacy-dot" aria-hidden="true"></span> On your Mac. In
+        your control.</span
+      ><span id="shortcutHint"><kbd>Alt</kbd> + <kbd>T</kbd></span>
+    </footer>
     <script src="popup.js"></script>
   </body>
 </html>

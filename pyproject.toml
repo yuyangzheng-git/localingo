@@ -1,6 +1,6 @@
 [project]
 name = "web-translator"
-version = "0.2.0"
+version = "0.3.0"
 description = "Local English-to-Chinese webpage translation engine (MLX + Chrome extension)"
 readme = "README.md"
 requires-python = ">=3.12"
