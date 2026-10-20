@@ -1,7 +1,7 @@
 """Build LocaLingo dictionary packages from an ECDICT CSV.
 
 Usage:
-    uv run python scripts/build_dict.py data/upstream/ecdict.csv \
+    python3 scripts/build_dict.py data/upstream/ecdict.csv \
         --license data/upstream/ECDICT-LICENSE.txt --commit <upstream sha> --out data/dist
 
 Produces, for each variant ("base" and "full"):

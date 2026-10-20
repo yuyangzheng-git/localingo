@@ -21,6 +21,14 @@ http
         return;
       }
       let content = await readFile(path);
+      // ?harness: run an extension page against the mocked chrome.* + real background.js.
+      if (url.searchParams.has("harness") && ["/extension/sidepanel.html", "/extension/learn.html"].includes(url.pathname))
+        content = content
+          .toString()
+          .replace(
+            "<head>",
+            '<head><base href="/extension/"><script src="/tests/browser/learn-chrome-mock.js"></script><script>window.__localingoTestExtension = true</script><script type="module">import "/extension/background.js";</script>',
+          );
       if (url.pathname === "/extension/popup.html")
         content = content
           .toString()

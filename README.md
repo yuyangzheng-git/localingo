@@ -21,7 +21,32 @@ never leaves your machine.
   <img src="docs/images/demo.png" alt="A web article with Simplified Chinese appended below each English paragraph" width="100%">
 </p>
 
-## Features
+## LocaLingo Learn (0.4)
+
+Read English, understand it in place, and keep what you learn
+([PRD](docs/PRD_ENGLISH_LEARNING.md) · [what's implemented](docs/LEARN_0.4.md)):
+
+- **Offline dictionary** — select a word or phrase → 查词. Lookups run against an
+  ECDICT package stored in the extension (no network, no translation server); word
+  forms come from the dictionary's own data (`studies → study`, `saw → see` shown as a
+  candidate, never forced), phrases resolve from inflected forms
+  (`took into account → take into account`). Sources are always shown.
+- **学习阅读** — a reading mode that keeps the page in English; a small 「译」 at the
+  end of each paragraph translates *only that paragraph* when you click it.
+- **Vocabulary book with real contexts** — saving keeps the sense you chose, the
+  sentence you saw it in and its source (query strings stripped); the same sense
+  seen again adds a context instead of a duplicate; different senses stay separate.
+- **Review** — recall first, then reveal; rate 忘记 / 困难 / 记得 / 很熟 on a
+  transparent fixed ladder (`simple-v1`: 10 min, 1, 3, 7, 14, 30, 60 days), 5 new
+  words a day by default, pause/limit any time.
+- **Learning center & side panel** — search, filter, edit, trash (30 days), saved
+  sentences, settings; a side panel for pinned lookups and this page's words.
+- **Speech** — local English voices only, unless you opt into online voices.
+- **Your data** — JSON backup/restore (idempotent), Anki TSV export, and optional
+  **sync with your own server** ([server/](server/README.md), Docker), which also
+  hosts the same learning center as a web app for reviewing on any device.
+
+## Translation features
 
 - **Current-page controls** — the popup shows the active article, live paragraph
   counts, and clear translating / reading / restore states. Failed paragraphs can
@@ -166,11 +191,36 @@ A Qwen LoRA adapter can alternatively be loaded unmerged via
   <img src="docs/images/privacy.png" alt="Your page text never leaves your Mac" width="80%">
 </p>
 
+## Learning setup
+
+1. **Dictionary.** Build the packages once (they are not in Git; ECDICT is MIT-licensed,
+   see [docs/DICTIONARY.md](docs/DICTIONARY.md)):
+
+   ```bash
+   mkdir -p data/upstream && cd data/upstream
+   curl -LO https://raw.githubusercontent.com/skywind3000/ECDICT/bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b/ecdict.csv
+   curl -L -o ECDICT-LICENSE.txt https://raw.githubusercontent.com/skywind3000/ECDICT/bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b/LICENSE
+   cd ../.. && python3 scripts/build_dict.py data/upstream/ecdict.csv \
+     --license data/upstream/ECDICT-LICENSE.txt --commit bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b
+   ```
+
+   Then in the extension: 学习中心 → 设置 → 离线词典 → 从文件导入 →
+   `data/dist/localingo-dict-ecdict-base-bc015ed.jsonl.gz` (≈8 MB, 149k entries, a few
+   seconds). With a sync server you can install it from the server instead.
+2. **Sync (optional).** Deploy [server/](server/README.md) behind HTTPS, then 设置 → 同步.
+3. **Shortcut (optional).** `chrome://extensions/shortcuts` → *Look up the selected word*.
+
+New permissions in 0.4: `sidePanel` (learning side panel), `tts` (pronunciation with
+local voices), `alarms` (periodic sync), `unlimitedStorage` (offline dictionary), and
+optional access to your own sync server's `https://` origin, requested only when you
+sign in.
+
 ## Development
 
 ```bash
 uv run pytest
-node --test tests/test_popup.mjs
+npm install && npm test          # popup controller + learning core (Node, fake-indexeddb)
+cd server && uv run pytest       # sync server
 ```
 
 For an interactive UI fixture (mock translations, no real tokens or model calls):
@@ -179,7 +229,11 @@ For an interactive UI fixture (mock translations, no real tokens or model calls)
 node tests/browser/serve.mjs
 ```
 
-Open `http://127.0.0.1:8791/tests/browser/preview.html`. See
+Open `http://127.0.0.1:8791/tests/browser/preview.html`. For the learning features,
+`http://127.0.0.1:8791/tests/browser/learn-harness.html` runs the real background
+script and content scripts against a mocked `chrome.*` (it imports the dictionary
+from `data/dist/`); `extension/learn.html?harness` and `extension/sidepanel.html?harness`
+open the learning pages the same way. See
 [the UI and interaction review](docs/UX_REVIEW.md) for implemented improvements,
 known limitations, and the next priorities. Reload the unpacked extension after
 updating it. A running older backend must be restarted from this project directory.

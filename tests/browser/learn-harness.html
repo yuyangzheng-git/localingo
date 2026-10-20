@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Harness article: accounting for the gap</title>
+    <!-- Run: node tests/browser/serve.mjs, then open
+         http://127.0.0.1:8791/tests/browser/learn-harness.html
+         Runs the real background.js + content scripts against a mocked chrome.* -->
+    <link rel="stylesheet" href="/extension/content.css" />
+    <script src="/tests/browser/learn-chrome-mock.js"></script>
+    <style>
+      body { font: 18px/1.65 Georgia, serif; color: #222; background: #fffdf8; max-width: 680px; margin: 32px auto; padding: 0 16px; }
+      h1 { font: 700 30px/1.25 Helvetica, Arial, sans-serif; }
+      #status { font: 13px system-ui; color: #555; }
+    </style>
+  </head>
+  <body>
+    <p id="status">Preparing harness…</p>
+    <main>
+      <article>
+        <h1>Why small models still need a dictionary</h1>
+        <p id="p1">The report accounts for the difference in the results, but the studies it cites saw only modest gains.</p>
+        <p id="p2">Researchers took the cost of retrieval into account before they deployed the system at the bank.</p>
+        <ul><li id="li1">Intro text of a list item<ul><li>Nested item that explains the setup.</li></ul></li></ul>
+        <p id="p3">Readers often take into account how a <a href="#x">well-known example</a> is framed.</p>
+      </article>
+    </main>
+    <script src="/extension/content.js"></script>
+    <script src="/extension/content-learn.js"></script>
+    <script type="module">
+      import "/extension/background.js";
+      import { importPackage, IdbDictionary } from "/extension/learning/dict-idb.js";
+      const status = document.getElementById("status");
+      const dict = new IdbDictionary();
+      let info = await dict.info();
+      if (!info) {
+        status.textContent = "Importing ECDICT base package…";
+        const t0 = performance.now();
+        const buf = await (await fetch("/data/dist/localingo-dict-ecdict-base-bc015ed.jsonl.gz")).arrayBuffer();
+        info = await importPackage(buf, {});
+        window.__importMs = Math.round(performance.now() - t0);
+      }
+      status.textContent = `Dictionary ready: ${info.package_id} (${info.entries} entries)${window.__importMs ? `, imported in ${window.__importMs} ms` : ""}`;
+      window.__ready = true;
+    </script>
+  </body>
+</html>

@@ -391,9 +391,11 @@
     }
     if (message?.type !== "learning:show-lookup") return;
     (async () => {
-      const info = selectionInfo();
-      const raw = message.text || info?.text || "";
       const { text: textMod } = await loadModules();
+      let info = selectionInfo();
+      // Only use the page selection as context when it is what's being looked up.
+      if (info && message.text && textMod.cleanSelection(info.text) !== textMod.cleanSelection(message.text)) info = null;
+      const raw = message.text || info?.text || "";
       const cls = textMod.classifySelection(raw);
       if (cls.kind === "sentence" || cls.kind === "too-long") await openTranslate(info, raw);
       else if (raw.trim()) await openLookup(info, cls.text || raw.trim());

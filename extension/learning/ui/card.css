@@ -45,6 +45,17 @@
   box-sizing: border-box;
 }
 
+/* Inside a shadow root there is no page stylesheet to honour [hidden]. */
+.ll-bar[hidden],
+.ll-card [hidden] {
+  display: none !important;
+}
+
+/* The card receives focus programmatically so Esc/Tab work; no ring for that. */
+.ll-card:focus {
+  outline: none;
+}
+
 .ll-card {
   display: flex;
   flex-direction: column;

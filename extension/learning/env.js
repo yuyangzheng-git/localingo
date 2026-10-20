@@ -9,7 +9,10 @@ import { DEFAULT_PREFS, normalizePrefs } from "./prefs.js";
 import { LearningStore } from "./store.js";
 import { ApiClient, login, syncOnce } from "./sync.js";
 
-export const isExtension = typeof chrome !== "undefined" && !!chrome.runtime?.id && location.protocol === "chrome-extension:";
+export const isExtension =
+  typeof chrome !== "undefined" &&
+  !!chrome.runtime?.id &&
+  (location.protocol === "chrome-extension:" || globalThis.__localingoTestExtension === true); // test harness only
 
 export function createEnv() {
   return isExtension ? extensionEnv() : webEnv();

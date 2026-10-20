@@ -382,3 +382,8 @@ html[data-wt-mode="translation"] .web-translator-cn {
     display: none !important;
   }
 }
+
+/* The 「…」 state of the reveal button already shows progress. */
+.web-translator-reveal[data-state="loading"] ~ .web-translator-spinner {
+  display: none !important;
+}
