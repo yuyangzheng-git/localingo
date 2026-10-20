@@ -1,0 +1,9 @@
+# Only server/, scripts/build_dict.py and the web app files in extension/ are needed.
+data/
+node_modules/
+**/.venv/
+**/__pycache__/
+.git/
+.pytest_cache/
+docs/images/
+tests/

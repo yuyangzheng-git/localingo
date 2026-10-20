@@ -1,0 +1,24 @@
+# docker compose -f server/compose.yaml up -d --build      (run from the repository root)
+#
+# Put HTTPS in front of it (see server/README.md, e.g. Caddy). The container only
+# speaks plain HTTP on port 8080, bound to localhost by default.
+services:
+  localingo:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    image: localingo-server:0.4.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      # First start only: creates this account if it doesn't exist. Remove afterwards.
+      LOCALINGO_ADMIN_USER: ${LOCALINGO_ADMIN_USER:-}
+      LOCALINGO_ADMIN_PASSWORD: ${LOCALINGO_ADMIN_PASSWORD:-}
+      LOCALINGO_ALLOW_SIGNUP: ${LOCALINGO_ALLOW_SIGNUP:-false}
+      LOCALINGO_DICT_VARIANT: ${LOCALINGO_DICT_VARIANT:-base}
+    volumes:
+      - localingo-data:/data
+
+volumes:
+  localingo-data:
