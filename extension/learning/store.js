@@ -81,6 +81,21 @@ export class LearningStore {
     return this._db;
   }
 
+  /** Delete this browser's copy of the learning database (web sign-out / account switch). */
+  async destroy() {
+    if (this._db) {
+      this._db.close();
+      this._db = null;
+    }
+    this._device = null;
+    await new Promise((resolve, reject) => {
+      const r = indexedDB.deleteDatabase(this.dbName);
+      r.onsuccess = () => resolve();
+      r.onerror = () => reject(r.error);
+      r.onblocked = () => resolve();
+    });
+  }
+
   onChange(fn) {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
@@ -168,11 +183,12 @@ export class LearningStore {
     const now = this.now();
     const result = await transact(db, ["items", "encounters", "cards"], "readwrite", async ({ items, encounters, cards }) => {
       const prior = await req(encounters.index("idem").get(idem));
-      if (prior) return { item_id: prior.item_id, result: "already_exists" };
+      if (prior) return { item_id: prior.item_id, encounter_id: prior.id, result: "already_exists" };
 
       const candidates = await req(items.index("dedupe").getAll(dedupe));
       let item = candidates.find((i) => !i.deleted_at) || null;
       let result = "updated";
+      let encounterId = null;
       if (!item) {
         result = "created";
         item = this._stamp(
@@ -223,11 +239,14 @@ export class LearningStore {
         if (same) {
           // Same sentence on the same page: refresh, don't pile up.
           encounters.put(this._stamp({ ...same, seen_at: now, idempotency_key: idem }, device, same));
+          encounterId = same.id;
+          if (result === "updated") result = "already_exists";
         } else {
+          encounterId = uuid();
           encounters.put(
             this._stamp(
               {
-                id: uuid(),
+                id: encounterId,
                 item_id: item.id,
                 idempotency_key: idem,
                 surface_form: context.surface || headword,
@@ -247,10 +266,11 @@ export class LearningStore {
         }
       } else {
         // No context (standalone lookup): still record the idempotency key.
+        encounterId = uuid();
         encounters.put(
           this._stamp(
             {
-              id: uuid(),
+              id: encounterId,
               item_id: item.id,
               idempotency_key: idem,
               surface_form: context.surface || headword,
@@ -265,7 +285,7 @@ export class LearningStore {
           ),
         );
       }
-      return { item_id: item.id, result };
+      return { item_id: item.id, encounter_id: encounterId, result };
     });
     this._emit("items");
     return result;

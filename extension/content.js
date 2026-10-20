@@ -51,7 +51,8 @@
     ".mw-sticky-header", ".vector-menu", ".vector-header", "#p-lang-btn",
     ".mw-indicators", "#siteNotice", ".siteNotice", ".mw-empty-elt",
     // our own injected elements (belt-and-suspenders)
-    ".web-translator-cn", ".web-translator-spinner", ".web-translator-orig",
+    ".web-translator-cn", ".web-translator-spinner", ".web-translator-orig", ".web-translator-reveal",
+    "localingo-learn",
   ].join(",");
 
   const CONTENT_ROOTS = [
@@ -246,14 +247,23 @@
 
   // --- display settings -------------------------------------------------
 
-  // displayMode: "bilingual" (Chinese below the original) | "translation" (Chinese only).
+  // displayMode: "learn" (English first; reveal one paragraph's Chinese on demand) |
+  //              "bilingual" (Chinese below the original) | "translation" (Chinese only).
   // translationStyle: "plain" (looks like the page's own text) | "muted" | "underline".
   const DEFAULT_SETTINGS = { displayMode: "bilingual", translationStyle: "plain" };
   const STYLES = new Set(["plain", "muted", "underline"]);
   let settings = { ...DEFAULT_SETTINGS };
 
-  function applySettings() {
+  const isLearnMode = (mode = settings.displayMode) => mode === "learn";
+
+  function applySettings(previousMode) {
     const root = document.documentElement;
+    // Switching between 学习阅读 and full-page translation while active changes what
+    // gets translated, so restart quietly (cached translations make this fast).
+    if (previousMode && intersectionObserver && isLearnMode(previousMode) !== isLearnMode()) {
+      restorePage({ quiet: true });
+      startTranslating({ quiet: true });
+    }
     root.dataset.wtMode = settings.displayMode;
     root.dataset.wtStyle = STYLES.has(settings.translationStyle) ? settings.translationStyle : "plain";
     // In translation-only mode, hovering a translation shows the original.
@@ -275,13 +285,14 @@
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== "sync") return;
       let changed = false;
+      const previousMode = settings.displayMode;
       for (const k of Object.keys(DEFAULT_SETTINGS)) {
         if (changes[k]) {
           settings[k] = changes[k].newValue ?? DEFAULT_SETTINGS[k];
           changed = true;
         }
       }
-      if (changed) applySettings();
+      if (changed) applySettings(previousMode);
     });
   } catch {
     // storage events unavailable — settings apply on next page load
@@ -315,6 +326,9 @@
       );
     }
   }
+
+  // Shared with content-learn.js (same isolated world).
+  globalThis.__localingoCore = { showToast };
 
   function closeTooltip() {
     document.querySelectorAll(".web-translator-tooltip").forEach((el) => el.remove());
@@ -480,7 +494,7 @@
     for (;;) {
       const nodes = [...el.childNodes].filter((n) =>
         n.nodeType === Node.ELEMENT_NODE
-          ? !n.classList.contains("web-translator-spinner")
+          ? !n.classList.contains("web-translator-spinner") && !n.classList.contains("web-translator-reveal")
           : n.nodeType === Node.TEXT_NODE && n.textContent.trim(),
       );
       if (nodes.length !== 1 || nodes[0].nodeType !== Node.ELEMENT_NODE) return el;
@@ -541,6 +555,8 @@
     });
     translatedKeys.add(keyOf(unit));
     cnBlocks.set(keyOf(unit), entry);
+    const btn = revealButtons.get(keyOf(unit));
+    if (btn) setRevealState(btn, "shown");
   }
 
   function removeTranslation(entry) {
@@ -615,6 +631,8 @@
       if (!translation) {
         failedUnits.set(keyOf(item.unit), item.unit);
         stats.failed = failedUnits.size;
+        const btn = revealButtons.get(keyOf(item.unit));
+        if (btn) setRevealState(btn, "failed");
         return;
       }
       failedUnits.delete(keyOf(item.unit));
@@ -670,7 +688,7 @@
         const batch = nextBatch();
         if (batch.length === 0) continue;
         if (batch.some((item) => !item.unit.live)) userVisible = true;
-        if (intersectionObserver && userVisible) {
+        if (intersectionObserver && userVisible && !isLearnMode()) {
           const done = stats.translated + stats.cached;
           showToast(`正在翻译… 已完成 ${done} 段，队列中 ${queue.length + batch.length} 段`, "progress");
         }
@@ -690,8 +708,9 @@
       processing = false;
     }
     if (!intersectionObserver) return;
-    // Page/scroll passes report their result; live updates only speak up on errors.
-    if (userVisible || stats.failed > reportStats.failedShown) reportStats();
+    // Page/scroll passes report their result; live updates and single-paragraph
+    // reveals (学习阅读) only speak up on errors.
+    if ((userVisible && !isLearnMode()) || stats.failed > reportStats.failedShown) reportStats();
   }
 
   function reportStats() {
@@ -716,8 +735,62 @@
 
   // --- viewport / mutation observers --------------------------------------
 
+  // --- 学习阅读: reveal one paragraph at a time -------------------------------
+
+  const revealButtons = new Map(); // unit key -> button
+
+  function setRevealState(btn, state) {
+    btn.dataset.state = state;
+    btn.setAttribute("aria-pressed", String(state === "shown"));
+    const label = { idle: "显示这段的中文译文", loading: "正在翻译这段", shown: "收起这段译文", hidden: "显示这段的中文译文", failed: "翻译失败，点击重试" }[state];
+    btn.setAttribute("aria-label", label);
+    btn.title = label;
+  }
+
+  function attachReveal(unit) {
+    const key = keyOf(unit);
+    const existing = revealButtons.get(key);
+    if (existing && existing.isConnected) {
+      // Its translation may have been dropped because the paragraph changed.
+      if (!translatedKeys.has(key) && !pending.has(key)) setRevealState(existing, "idle");
+      return;
+    }
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "web-translator-reveal";
+    setRevealState(btn, translatedKeys.has(key) ? "shown" : "idle");
+    btn.addEventListener("click", (e) => {
+      // Don't trigger links or click handlers of the paragraph around the button.
+      e.preventDefault();
+      e.stopPropagation();
+      onReveal(unit, btn);
+    });
+    insertForUnit(unit, btn);
+    revealButtons.set(key, btn);
+  }
+
+  function onReveal(unit, btn) {
+    const key = keyOf(unit);
+    const entry = cnBlocks.get(key);
+    if (entry) {
+      const hide = !entry.span.classList.contains("web-translator-collapsed");
+      withoutObserving(() => entry.span.classList.toggle("web-translator-collapsed", hide));
+      setRevealState(btn, hide ? "hidden" : "shown");
+      return;
+    }
+    if (pending.has(key)) return;
+    setRevealState(btn, "loading");
+    unit.live = false;
+    unit.reveal = true;
+    enqueue(unit);
+  }
+
   function observeUnit(unit) {
     if (!intersectionObserver || !keyOf(unit).isConnected) return;
+    if (isLearnMode()) {
+      attachReveal(unit);
+      return;
+    }
     const target = unit.host;
     let waiting = observed.get(target);
     if (!waiting) {
@@ -803,7 +876,7 @@
     }
   }
 
-  function startTranslating() {
+  function startTranslating({ quiet = false } = {}) {
     if (intersectionObserver) return; // already running
 
     resetStats();
@@ -829,7 +902,10 @@
     // Visible text translates now; the rest as it scrolls into view.
     const units = collectUnits(root, true);
     for (const unit of units) observeUnit(unit);
-    showToast(units.length ? "阅读翻译已开启，滚动时会自动翻译英文正文" : "没有找到可翻译的英文正文", "info");
+    if (quiet) return;
+    if (!units.length) showToast("没有找到可翻译的英文正文", "info");
+    else if (isLearnMode()) showToast("学习阅读已开启：先读原文，点段落末尾的「译」只看这一段的中文", "info");
+    else showToast("阅读翻译已开启，滚动时会自动翻译英文正文", "info");
   }
 
   function stopTranslating() {
@@ -847,7 +923,7 @@
     dirtyTimer = null;
   }
 
-  function restorePage() {
+  function restorePage({ quiet = false } = {}) {
     const wasRunning = !!intersectionObserver;
     stopTranslating();
     session++;
@@ -856,12 +932,16 @@
       removeTranslation(entry);
       count++;
     }
-    document.querySelectorAll(".web-translator-spinner").forEach((el) => el.remove());
+    withoutObserving(() => {
+      document.querySelectorAll(".web-translator-spinner, .web-translator-reveal").forEach((el) => el.remove());
+    });
+    revealButtons.clear();
     cnBlocks.clear();
     translatedKeys = new WeakSet();
     pending = new WeakSet();
     queue = [];
     resetStats();
+    if (quiet) return;
     if (count) showToast(`已恢复原文（移除 ${count} 段译文）`);
     else showToast(wasRunning ? "已停止翻译" : "当前页面没有译文");
   }
@@ -924,6 +1004,7 @@
         ok: true,
         stats: { ...stats },
         active: !!intersectionObserver || cnBlocks.size > 0,
+        mode: settings.displayMode,
         processing: !!intersectionObserver && processing,
         queued: queue.length,
         inFlight: intersectionObserver ? inFlight : 0,

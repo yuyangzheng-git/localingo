@@ -159,6 +159,15 @@ test("sensesOf keeps polysemous senses separate with the same-POS Chinese gloss"
   assert.equal(phrase[0].definition_en, null);
 });
 
+test("senses follow the Chinese gloss order and the inflection's part of speech", async () => {
+  const see = { k: "see", w: "see", en: [["n", "the seat of a bishop"], ["v", "perceive by sight"]], zh: [["vt", "看见"], ["vi", "看"], ["n", "主教的职位"]] };
+  assert.deepEqual(sensesOf(see).map((s) => s.pos), ["v", "n"]);
+  assert.equal(sensesOf(see)[0].gloss_zh, "vt. 看见；vi. 看", "several lines of one part of speech keep labels");
+  assert.equal(sensesOf(see)[1].gloss_zh, "主教的职位", "a single line has no repeated label");
+  const saw = await lookup("saw", memorySource());
+  assert.equal(saw.results[1].senses[0].pos, "v", "saw → see puts verb senses first");
+});
+
 test("IndexedDB dictionary: import, lookup, checksum guard, replace and remove", async () => {
   const dict = new IdbDictionary();
   assert.equal(await dict.info(), null);

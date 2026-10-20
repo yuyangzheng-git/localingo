@@ -306,3 +306,79 @@ html[data-wt-mode="translation"] .web-translator-cn {
     transition: none;
   }
 }
+
+/* --- 学习阅读: per-paragraph reveal button ---------------------------------- */
+/* The label comes from ::before so the button adds no text to the paragraph
+   (keeps innerText / change detection unaffected). */
+
+.web-translator-reveal {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 1.6em;
+  height: 1.45em;
+  margin-left: 0.35em;
+  padding: 0 0.35em;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: 0.5em;
+  vertical-align: 0.05em;
+  font: 600 0.72em/1 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  color: inherit;
+  opacity: 0.32;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.web-translator-reveal::before {
+  content: "译";
+}
+
+.web-translator-reveal[data-state="shown"]::before {
+  content: "收";
+}
+
+.web-translator-reveal[data-state="loading"]::before {
+  content: "…";
+}
+
+.web-translator-reveal[data-state="failed"]::before {
+  content: "↻";
+}
+
+:hover > .web-translator-reveal,
+.web-translator-reveal:hover,
+.web-translator-reveal:focus-visible,
+.web-translator-reveal[data-state="shown"],
+.web-translator-reveal[data-state="loading"],
+.web-translator-reveal[data-state="failed"] {
+  opacity: 0.85;
+}
+
+.web-translator-reveal:hover {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.web-translator-reveal:focus-visible {
+  outline: 2px solid #285e50;
+  outline-offset: 2px;
+}
+
+/* Touch screens have no hover: keep the entry visible. */
+@media (hover: none) {
+  .web-translator-reveal {
+    opacity: 0.7;
+  }
+}
+
+.web-translator-cn.web-translator-collapsed {
+  display: none !important;
+}
+
+@media print {
+  .web-translator-reveal {
+    display: none !important;
+  }
+}

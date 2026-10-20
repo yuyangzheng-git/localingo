@@ -1,12 +1,18 @@
 {
   "manifest_version": 3,
   "name": "LocaLingo",
-  "version": "0.3.0",
-  "description": "Local English → Simplified Chinese page translation via a local MLX server.",
-  "permissions": ["activeTab", "contextMenus", "storage", "scripting"],
+  "version": "0.4.0",
+  "description": "Read English, look up words offline, keep them with their sentences, and review — translation runs on your Mac.",
+  "minimum_chrome_version": "116",
+  "permissions": ["activeTab", "contextMenus", "storage", "scripting", "sidePanel", "tts", "alarms", "unlimitedStorage"],
   "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
+  "optional_host_permissions": ["https://*/*"],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
   },
   "commands": {
     "toggle-mode": {
@@ -14,14 +20,23 @@
         "default": "Alt+T"
       },
       "description": "Toggle translation on/off"
+    },
+    "lookup-selection": {
+      "description": "Look up the selected word"
     }
   },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "js": ["content.js", "content-learn.js"],
       "css": ["content.css"],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["learning/ui/card.css", "learning/ui/lookup-card.js", "learning/dict.js", "learning/text.js"],
+      "matches": ["<all_urls>"]
     }
   ],
   "action": {

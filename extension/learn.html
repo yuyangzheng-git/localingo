@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LocaLingo 学习中心</title>
+    <link rel="icon" href="icons/icon48.png" />
+    <link rel="stylesheet" href="learn/app.css" />
+    <link rel="stylesheet" href="learning/ui/card.css" />
+  </head>
+  <body class="center">
+    <a class="skip" href="#main">跳到主要内容</a>
+    <header class="topbar">
+      <a class="brand" href="#words"><img src="icons/mark.svg" alt="" width="26" height="26" /><span>LocaLingo</span><small>学习中心</small></a>
+      <nav class="nav" aria-label="学习中心" id="nav">
+        <a href="#words" data-route="words">生词与词组</a>
+        <a href="#sentences" data-route="sentences">收藏句子</a>
+        <a href="#review" data-route="review">今日复习 <span class="badge" id="navDue" hidden></span></a>
+        <a href="#lookup" data-route="lookup">查词</a>
+        <a href="#settings" data-route="settings">设置</a>
+      </nav>
+      <span class="sync-state" id="syncState" role="status"></span>
+    </header>
+
+    <main id="main" tabindex="-1">
+      <!-- Web app: sign in -->
+      <section class="page narrow" id="page-login" hidden>
+        <h1>登录 LocaLingo</h1>
+        <p class="muted">登录后可以在这里复习、整理生词，并与 Chrome 扩展同步。</p>
+        <form id="loginForm" class="stack" novalidate>
+          <label class="field">用户名 <input id="loginUser" autocomplete="username" required maxlength="32" /></label>
+          <label class="field">密码 <input id="loginPassword" type="password" autocomplete="current-password" required maxlength="256" /></label>
+          <div class="row">
+            <button class="btn primary" type="submit" id="loginBtn">登录</button>
+            <button class="btn" type="button" id="signupBtn" hidden>注册新账号</button>
+          </div>
+          <p class="form-msg" id="loginMsg" role="alert"></p>
+        </form>
+      </section>
+
+      <!-- Onboarding (dismissible, shown above the word list) -->
+      <section class="onboard" id="onboard" hidden aria-labelledby="onboardTitle">
+        <h2 id="onboardTitle">开始之前（可跳过）</h2>
+        <div class="onboard-grid">
+          <label class="field">你主要读什么？
+            <select id="obDomain">
+              <option value="">不指定</option>
+              <option value="general">新闻、博客与一般文章</option>
+              <option value="academic">课程阅读与论文</option>
+              <option value="tech">技术文档与 AI 论文</option>
+            </select>
+          </label>
+          <label class="field">解释更偏向
+            <select id="obAssist">
+              <option value="zh">更多中文帮助</option>
+              <option value="mixed" selected>中英结合</option>
+              <option value="en">尽量英文</option>
+            </select>
+          </label>
+          <label class="field">每天学习新词
+            <select id="obDaily">
+              <option value="0">先不复习</option>
+              <option value="3">3 个</option>
+              <option value="5" selected>5 个</option>
+              <option value="10">10 个</option>
+            </select>
+          </label>
+        </div>
+        <div class="row">
+          <button class="btn primary" type="button" id="obSave">保存偏好</button>
+          <button class="btn" type="button" id="obSkip">跳过</button>
+        </div>
+      </section>
+
+      <!-- Words -->
+      <section class="page" id="page-words" hidden aria-labelledby="wordsTitle">
+        <div class="page-head">
+          <h1 id="wordsTitle">生词与词组</h1>
+          <div class="row">
+            <button class="btn" type="button" id="trashToggle" aria-pressed="false">回收区</button>
+          </div>
+        </div>
+        <div class="filters" role="search">
+          <label class="sr-only" for="wordQ">搜索生词</label>
+          <input id="wordQ" type="search" placeholder="搜索词头、释义或笔记…" autocomplete="off" />
+          <select id="wordStatus" aria-label="学习状态">
+            <option value="">全部状态</option>
+            <option value="learning">学习中</option>
+            <option value="familiar">熟悉</option>
+            <option value="paused">暂停</option>
+          </select>
+          <select id="wordTag" aria-label="标签"><option value="">全部标签</option></select>
+          <select id="wordSite" aria-label="来源网站"><option value="">全部来源</option></select>
+          <label class="check"><input type="checkbox" id="wordDue" /> 待复习</label>
+          <select id="wordSort" aria-label="排序">
+            <option value="recent">最近收藏</option>
+            <option value="due">下次复习</option>
+            <option value="alpha">字母顺序</option>
+          </select>
+        </div>
+        <p class="muted" id="wordCount" role="status"></p>
+        <ul class="cards" id="wordList"></ul>
+        <button class="btn" type="button" id="wordMore" hidden>加载更多</button>
+        <div class="empty" id="wordEmpty" hidden>
+          <p>还没有收藏的词。在网页上选中单词 → 查词 → 加入生词本，它会连同原句一起出现在这里。</p>
+        </div>
+      </section>
+
+      <!-- Item detail (dialog) -->
+      <dialog class="drawer" id="itemDialog" aria-labelledby="itemTitle">
+        <form method="dialog" class="drawer-inner" id="itemForm">
+          <header class="drawer-head">
+            <div>
+              <h2 id="itemTitle"></h2>
+              <p class="muted" id="itemMeta"></p>
+            </div>
+            <button class="icon" value="close" aria-label="关闭">×</button>
+          </header>
+          <div class="drawer-body">
+            <div class="meaning" id="itemMeaning"></div>
+            <label class="field">我的释义（复习时显示，词典释义保留不变）
+              <textarea id="itemGloss" rows="2" maxlength="2000"></textarea>
+            </label>
+            <label class="field">笔记 <textarea id="itemNote" rows="3" maxlength="4000"></textarea></label>
+            <label class="field">标签（用逗号分隔） <input id="itemTags" maxlength="400" /></label>
+            <fieldset class="field">
+              <legend>学习状态</legend>
+              <div class="seg" id="itemStatus" role="radiogroup">
+                <label><input type="radio" name="status" value="learning" /> 学习中</label>
+                <label><input type="radio" name="status" value="familiar" /> 熟悉</label>
+                <label><input type="radio" name="status" value="paused" /> 暂停复习</label>
+              </div>
+            </fieldset>
+            <h3>遇见过的语境</h3>
+            <ul class="encounters" id="itemEncounters"></ul>
+          </div>
+          <footer class="drawer-foot">
+            <button class="btn danger" type="button" id="itemDelete">删除</button>
+            <span class="form-msg" id="itemMsg" role="status"></span>
+            <button class="btn primary" type="button" id="itemSave">保存</button>
+          </footer>
+        </form>
+      </dialog>
+
+      <!-- Sentences -->
+      <section class="page" id="page-sentences" hidden aria-labelledby="sentTitle">
+        <div class="page-head">
+          <h1 id="sentTitle">收藏句子</h1>
+          <button class="btn" type="button" id="sentTrashToggle" aria-pressed="false">回收区</button>
+        </div>
+        <div class="filters"><input id="sentQ" type="search" placeholder="搜索句子或笔记…" aria-label="搜索句子" /></div>
+        <ul class="cards" id="sentList"></ul>
+        <div class="empty" id="sentEmpty" hidden><p>还没有收藏句子。在网页上选中一句话 → 收藏句子。</p></div>
+      </section>
+
+      <!-- Review -->
+      <section class="page narrow" id="page-review" hidden aria-labelledby="reviewTitle">
+        <div class="page-head">
+          <h1 id="reviewTitle">今日复习</h1>
+          <span class="muted" id="reviewProgress" role="status"></span>
+          <button class="btn" type="button" id="reviewEnd" hidden>结束本次</button>
+        </div>
+        <div id="reviewStart" class="review-start">
+          <p id="reviewSummary"></p>
+          <button class="btn primary big" type="button" id="reviewBegin">开始复习</button>
+          <p class="muted small">先回忆，再看答案；按自己的感受评分。可随时结束，积压不会影响查词和阅读。</p>
+        </div>
+        <article class="review-card" id="reviewCard" hidden tabindex="-1" aria-live="polite">
+          <p class="review-prompt" id="reviewPrompt" lang="en"></p>
+          <p class="muted" id="reviewAsk"></p>
+          <label class="sr-only" for="reviewInput">输入你的理解（可选）</label>
+          <input id="reviewInput" placeholder="可选：输入你的理解…" autocomplete="off" maxlength="300" />
+          <div class="row">
+            <button class="btn primary" type="button" id="reviewReveal">显示答案 <kbd>Space</kbd></button>
+            <button class="btn" type="button" id="reviewSpeak">朗读</button>
+          </div>
+          <div class="review-answer" id="reviewAnswer" hidden>
+            <div class="meaning" id="reviewMeaning"></div>
+            <p class="muted small" id="reviewSource"></p>
+            <div class="ratings" id="reviewRatings" role="group" aria-label="评分"></div>
+          </div>
+        </article>
+        <div class="review-done" id="reviewDone" hidden>
+          <h2 id="reviewDoneTitle">本次复习完成</h2>
+          <p class="muted" id="reviewDoneText"></p>
+          <button class="btn" type="button" id="reviewAgain">再来一组</button>
+        </div>
+      </section>
+
+      <!-- Lookup -->
+      <section class="page narrow" id="page-lookup" hidden aria-labelledby="lookupTitle">
+        <h1 id="lookupTitle">查词</h1>
+        <form id="lookupForm" class="search" role="search">
+          <label class="sr-only" for="lookupQ">查一个词或短语</label>
+          <input id="lookupQ" type="search" placeholder="查一个词或短语…" autocomplete="off" spellcheck="false" maxlength="300" />
+          <button class="btn primary" type="submit">查询</button>
+        </form>
+        <div id="lookupCard"></div>
+      </section>
+
+      <!-- Settings -->
+      <section class="page" id="page-settings" hidden aria-labelledby="settingsTitle">
+        <h1 id="settingsTitle">设置</h1>
+
+        <section class="panel-box" aria-labelledby="sPrefs">
+          <h2 id="sPrefs">阅读与复习</h2>
+          <div class="grid2">
+            <label class="field">解释语言
+              <select id="pAssist">
+                <option value="zh">更多中文帮助</option>
+                <option value="mixed">中英结合</option>
+                <option value="en">尽量英文（中文点按显示）</option>
+              </select>
+            </label>
+            <label class="field" data-ext-only>选词操作条
+              <select id="pBar">
+                <option value="always">选中文字时显示</option>
+                <option value="learn">仅在学习阅读模式</option>
+                <option value="off">关闭（可用右键菜单或快捷键）</option>
+              </select>
+            </label>
+            <label class="field">每天新词上限 <input id="pDaily" type="number" min="0" max="50" /></label>
+            <label class="field">每次复习最多 <input id="pSession" type="number" min="5" max="100" /></label>
+            <label class="field">朗读速度
+              <select id="pRate"><option value="1">正常</option><option value="0.7">慢速</option></select>
+            </label>
+            <label class="field">朗读声音 <select id="pVoice"><option value="">自动选择本地英语声音</option></select></label>
+          </div>
+          <label class="check"><input type="checkbox" id="pRemote" /> 允许使用在线语音（朗读的文字会发送到语音服务）</label>
+          <p class="muted small" id="voiceHint"></p>
+          <p class="form-msg" id="prefsMsg" role="status"></p>
+        </section>
+
+        <section class="panel-box" aria-labelledby="sDict" data-ext-only>
+          <h2 id="sDict">离线词典</h2>
+          <p id="dictStatus" class="muted">读取中…</p>
+          <div class="row" id="dictServerRow" hidden>
+            <select id="dictPackages" aria-label="词典包"></select>
+            <button class="btn primary" type="button" id="dictDownload">从同步服务器安装</button>
+          </div>
+          <div class="row">
+            <label class="btn file">从文件导入… <input type="file" id="dictFile" accept=".gz,application/gzip" hidden /></label>
+            <button class="btn" type="button" id="dictRemove">移除词典</button>
+          </div>
+          <div class="progress" id="dictProgress" hidden>
+            <progress id="dictBar" max="1" value="0"></progress>
+            <span id="dictProgressText"></span>
+            <button class="btn" type="button" id="dictCancel">取消</button>
+          </div>
+          <p class="form-msg" id="dictMsg" role="status"></p>
+          <details class="muted small"><summary>来源与许可</summary><p id="dictLicense">ECDICT（MIT 许可，作者 Linwei）；英文释义源自 WordNet（Princeton University）。标注为 [网络] 的释义未收录。</p></details>
+        </section>
+
+        <section class="panel-box" aria-labelledby="sSync">
+          <h2 id="sSync">同步</h2>
+          <p class="muted" id="syncStatus"></p>
+          <form id="syncForm" class="stack" novalidate>
+            <label class="field" data-ext-only>服务器地址 <input id="syncServer" type="url" placeholder="https://learn.example.com" autocomplete="url" /></label>
+            <div class="grid2">
+              <label class="field">用户名 <input id="syncUser" autocomplete="username" maxlength="32" /></label>
+              <label class="field">密码 <input id="syncPassword" type="password" autocomplete="current-password" maxlength="256" /></label>
+            </div>
+            <div class="row">
+              <button class="btn primary" type="submit" id="syncSignIn">登录并同步</button>
+            </div>
+          </form>
+          <div class="row" id="syncActions" hidden>
+            <button class="btn primary" type="button" id="syncNow">立即同步</button>
+            <button class="btn" type="button" id="syncSignOut">退出登录</button>
+          </div>
+          <p class="form-msg" id="syncMsg" role="status"></p>
+          <p class="muted small">同步内容：生词、语境原句与来源链接、笔记、收藏句子和复习记录。不会上传整页内容、浏览记录或翻译令牌。</p>
+        </section>
+
+        <section class="panel-box" aria-labelledby="sData">
+          <h2 id="sData">数据</h2>
+          <div class="row">
+            <button class="btn" type="button" id="exportJson">导出完整备份（JSON）</button>
+            <label class="btn file">导入备份… <input type="file" id="importJson" accept=".json,application/json" hidden /></label>
+          </div>
+          <div class="row">
+            <button class="btn" type="button" id="exportAnki">导出到 Anki（TSV）</button>
+            <label class="check"><input type="checkbox" id="ankiCloze" /> 原句挖空</label>
+          </div>
+          <div class="import-preview" id="importPreview" hidden>
+            <p id="importSummary"></p>
+            <div class="row">
+              <button class="btn primary" type="button" id="importConfirm">合并导入</button>
+              <button class="btn" type="button" id="importCancel">取消</button>
+            </div>
+          </div>
+          <p class="muted small" id="storageInfo"></p>
+          <p class="muted small" data-ext-only>学习数据保存在本浏览器的扩展存储中；卸载扩展或清除浏览器数据会删除它们，请定期导出备份或开启同步。</p>
+          <p class="form-msg" id="dataMsg" role="status"></p>
+        </section>
+      </section>
+    </main>
+    <script type="module" src="learn/learn.js"></script>
+  </body>
+</html>

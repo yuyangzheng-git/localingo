@@ -68,9 +68,9 @@ export function previewIntervals(state, now) {
 
 export function formatInterval(ms) {
   if (ms < 60 * MINUTE) return `${Math.round(ms / MINUTE)} 分钟`;
-  if (ms < DAY) return `${Math.round(ms / (60 * MINUTE))} 小时`;
-  const days = Math.round(ms / DAY);
-  return `${days} 天`;
+  // Anything from ~22 hours counts as a day, so "due in 1 day" doesn't read "24 小时".
+  if (ms < 22 * 60 * MINUTE) return `${Math.round(ms / (60 * MINUTE))} 小时`;
+  return `${Math.max(1, Math.round(ms / DAY))} 天`;
 }
 
 /** Local calendar day (in the user's time zone) of a timestamp, e.g. "2026-10-20". */

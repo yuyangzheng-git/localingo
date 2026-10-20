@@ -68,6 +68,21 @@
           <button
             type="button"
             role="radio"
+            data-value="learn"
+            aria-checked="false"
+            tabindex="-1"
+            class="wide"
+          >
+            <span class="mode-drawing learn" aria-hidden="true"
+              ><i></i><i></i><i></i><b>译</b></span
+            ><span
+              ><strong>学习阅读</strong
+              ><small>先读原文，点段落末尾「译」只看这一段</small></span
+            ><span class="radio-dot" aria-hidden="true"></span>
+          </button>
+          <button
+            type="button"
+            role="radio"
             data-value="bilingual"
             aria-checked="true"
             tabindex="0"
@@ -136,6 +151,24 @@
         <p class="action-hint" id="actionHint">
           翻译只在本机进行，无需云端 API。
         </p>
+      </section>
+      <section class="learning" aria-labelledby="learningTitle">
+        <div class="section-heading">
+          <h2 id="learningTitle">词汇与复习</h2>
+          <span id="dictState">离线词典</span>
+        </div>
+        <div class="learn-actions">
+          <button type="button" class="learn-tile" id="openReview">
+            <strong id="reviewCount">–</strong><span>今日复习</span>
+          </button>
+          <button type="button" class="learn-tile" id="openPanel">
+            <strong aria-hidden="true">▍</strong><span>学习侧栏</span>
+          </button>
+          <button type="button" class="learn-tile" id="openCenter">
+            <strong aria-hidden="true">↗</strong><span>学习中心</span>
+          </button>
+        </div>
+        <p class="action-hint">选中英文单词或短语即可查词、收藏，不需要连接翻译服务。</p>
       </section>
       <details class="settings" id="settings">
         <summary>

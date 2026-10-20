@@ -4,6 +4,7 @@ const DEFAULT_SETTINGS = {
   translationStyle: "plain",
 };
 const STYLES = ["plain", "muted", "underline"];
+const MODES = ["learn", "bilingual", "translation"];
 const $ = (id) => document.getElementById(id);
 const state = {
   tab: null,
@@ -13,6 +14,7 @@ const state = {
   authorized: false,
   checking: true,
   commandPending: false,
+  mode: "bilingual",
 };
 let connectionNotice = "";
 let connectionKind = "error";
@@ -36,10 +38,13 @@ function renderNotice() {
 }
 
 function renderAction() {
+  const learn = state.mode === "learn";
+  // 学习阅读 can start without the translation server: it only translates the
+  // paragraphs the reader reveals, and offline lookup works regardless.
   $("toggle").disabled =
     state.commandPending ||
     !state.supported ||
-    (!state.active && (!state.authorized || state.checking));
+    (!state.active && !learn && (!state.authorized || state.checking));
   $("toggle").dataset.active = String(state.active);
   $("toggleLabel").textContent = !state.supported
     ? "此页面暂不支持"
@@ -48,16 +53,24 @@ function renderAction() {
       : state.active
         ? state.busy
           ? "停止并恢复原文"
-          : "恢复原文"
-        : state.checking
+          : learn
+            ? "关闭学习阅读"
+            : "恢复原文"
+        : learn
+          ? "开始学习阅读"
+          : state.checking
           ? "正在检查连接…"
           : !state.authorized
             ? "请先连接本地服务"
             : "翻译此页";
   $("toggleIcon").textContent = state.active ? "↶" : "↗";
-  $("actionHint").textContent = state.active
-    ? "可随时关闭弹窗，翻译会在当前页面继续。"
-    : "优先翻译可见段落，继续滚动即可接着翻译。";
+  $("actionHint").textContent = learn
+    ? state.authorized
+      ? "只翻译你点开的段落；查词和复习完全离线。"
+      : "查词可离线使用；看段落译文需要连接本地翻译服务。"
+    : state.active
+      ? "可随时关闭弹窗，翻译会在当前页面继续。"
+      : "优先翻译可见段落，继续滚动即可接着翻译。";
   $("retryFailed").disabled =
     state.busy || !state.authorized || state.commandPending;
 }
@@ -83,7 +96,9 @@ function renderPage(data) {
       ? `正在翻译 · ${(data.queued || 0) + (data.inFlight || 0)} 段处理中`
       : stats.failed
         ? `${stats.failed} 段未完成，可以单独重试`
-        : state.active
+        : state.active && state.mode === "learn"
+          ? `学习阅读 · 已显示 ${stats.translated + stats.cached} 段译文`
+          : state.active
           ? data.waiting
             ? "当前内容已处理，滚动以翻译更多"
             : stats.translated + stats.cached
@@ -217,6 +232,8 @@ function renderRadios(group, value) {
 }
 
 function renderDisplayMode(mode) {
+  state.mode = mode;
+  renderAction();
   renderRadios($("displayMode"), mode);
   $("styleGroup").disabled = mode === "translation";
   $("styleHint").hidden = mode !== "translation";
@@ -348,7 +365,7 @@ async function init() {
     const { authToken } = await chrome.storage.local.get({ authToken: "" });
     $("authToken").value = authToken;
     renderDisplayMode(
-      prefs.displayMode === "translation" ? "translation" : "bilingual",
+      MODES.includes(prefs.displayMode) ? prefs.displayMode : "bilingual",
     );
     renderRadios(
       $("translationStyle"),
@@ -392,7 +409,7 @@ async function init() {
           });
           await chrome.scripting.executeScript({
             target: { tabId: state.tab.id },
-            files: ["content.js"],
+            files: ["content.js", "content-learn.js"],
           });
         } catch {
           state.supported = false;
@@ -422,4 +439,36 @@ async function init() {
     setNotice("扩展初始化失败，请关闭弹窗并重新打开。");
   }
 }
+// --- vocabulary & review ---------------------------------------------------------
+
+async function refreshLearning() {
+  try {
+    const resp = await chrome.runtime.sendMessage({ type: "learning:summary" });
+    if (!resp?.ok) return;
+    $("reviewCount").textContent = String(resp.summary.today_total);
+    $("openReview").setAttribute("aria-label", `今日复习 ${resp.summary.today_total} 条`);
+    $("dictState").textContent = resp.dictionary ? "离线词典已安装" : "尚未安装词典";
+  } catch {
+    /* service worker unavailable; keep placeholders */
+  }
+}
+
+function openCenter(hash = "") {
+  chrome.tabs.create({ url: chrome.runtime.getURL("learn.html") + hash });
+  window.close();
+}
+
+$("openReview").addEventListener("click", () => openCenter("#review"));
+$("openCenter").addEventListener("click", () => openCenter(""));
+$("openPanel").addEventListener("click", async () => {
+  try {
+    // Called directly from the click so Chrome accepts it as a user gesture.
+    await chrome.sidePanel.open({ windowId: state.tab?.windowId });
+    window.close();
+  } catch {
+    openCenter("#lookup");
+  }
+});
+
 init();
+refreshLearning();

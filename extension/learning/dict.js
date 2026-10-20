@@ -40,6 +40,15 @@ export const POS_LABELS = {
 const POS_FAMILY = { vt: "v", vi: "v", pl: "n" };
 const family = (pos) => POS_FAMILY[pos] || pos || "";
 
+/** Part of speech implied by inflection kinds: past/participle/3rd person → verb, plural → noun. */
+function familyOfForms(kinds) {
+  const k = String(kinds);
+  if (/[pdi3]/.test(k)) return "v";
+  if (k.includes("s")) return "n";
+  if (/[rt]/.test(k)) return "adj";
+  return null;
+}
+
 function describeForms(kinds) {
   return [...new Set(String(kinds).split(""))]
     .map((k) => FORM_LABELS[k])
@@ -52,21 +61,32 @@ function describeForms(kinds) {
  * the sense units, each paired with the Chinese gloss of the same part of speech;
  * entries without English definitions use their Chinese lines as senses.
  */
-export function sensesOf(entry, sourceId = "ecdict") {
+export function sensesOf(entry, sourceId = "ecdict", preferFamily = null) {
   const zh = entry.zh || [];
   const en = entry.en || [];
-  const zhFor = (pos) =>
-    zh
-      .filter(([p]) => p && family(p) === family(pos))
-      .map(([p, t]) => (zh.length > 1 ? `${POS_LABELS[p] || p} ${t}` : t))
-      .join("；") || null;
+  const zhFor = (pos) => {
+    const lines = zh.filter(([p]) => p && family(p) === family(pos));
+    // Label lines only when they need telling apart (e.g. "vt. …；vi. …").
+    return lines.map(([p, t]) => (lines.length > 1 ? `${POS_LABELS[p] || p} ${t}` : t)).join("；") || null;
+  };
   if (en.length) {
-    return en.map(([pos, text], i) => ({
-      id: `${sourceId}:${entry.k}:en${i}`,
-      pos: pos || "",
-      definition_en: text,
-      gloss_zh: zhFor(pos),
-    }));
+    // WordNet lists nouns first; the Chinese glosses list the more common part of
+    // speech first, so order senses by that (stable within a part of speech).
+    const order = [...new Set([preferFamily, ...zh.map(([p]) => family(p))].filter(Boolean))];
+    const rank = (pos) => {
+      const i = order.indexOf(family(pos));
+      return i < 0 ? order.length : i;
+    };
+    return en
+      .map(([pos, text], i) => ({
+        id: `${sourceId}:${entry.k}:en${i}`,
+        pos: pos || "",
+        definition_en: text,
+        gloss_zh: zhFor(pos),
+        _i: i,
+      }))
+      .sort((a, b) => rank(a.pos) - rank(b.pos) || a._i - b._i)
+      .map(({ _i, ...sense }) => sense);
   }
   return zh.map(([pos, text], i) => ({
     id: `${sourceId}:${entry.k}:zh${i}`,
@@ -124,11 +144,11 @@ export async function lookup(rawQuery, source) {
   const key = normalizeKey(cls.text);
   const results = [];
   const seen = new Set();
-  const push = (entry, relation, note = "") => {
+  const push = (entry, relation, note = "", preferFamily = null) => {
     const id = `${entry.k}|${entry.w}`;
     if (seen.has(id)) return;
     seen.add(id);
-    results.push({ entry, senses: sensesOf(entry, sourceId), relation, note });
+    results.push({ entry, senses: sensesOf(entry, sourceId, preferFamily), relation, note });
   };
 
   if (cls.kind === "word") {
@@ -143,7 +163,7 @@ export async function lookup(rawQuery, source) {
     for (const e of exact) push(e, "exact");
     for (const lk of lemmaKeys) {
       const kinds = lemmaRefs.filter(([k]) => k === lk).map(([, kind]) => kind).join("");
-      for (const e of lemmaEntries.get(lk) || []) push(e, "lemma", `${cls.text} 是 ${e.w} 的${describeForms(kinds) || "变形"}`);
+      for (const e of lemmaEntries.get(lk) || []) push(e, "lemma", `${cls.text} 是 ${e.w} 的${describeForms(kinds) || "变形"}`, familyOfForms(kinds));
     }
     if (!results.length) {
       const guesses = guessLemmas(cls.text);

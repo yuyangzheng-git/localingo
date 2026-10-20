@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LocaLingo 学习侧栏</title>
+    <link rel="stylesheet" href="learn/app.css" />
+    <link rel="stylesheet" href="learning/ui/card.css" />
+  </head>
+  <body class="panel">
+    <header class="panel-head">
+      <div class="brand"><img src="icons/mark.svg" alt="" width="22" height="22" /><span>LocaLingo</span></div>
+      <button type="button" class="pill" id="reviewLink">今日复习 <strong id="dueCount">–</strong> ↗</button>
+    </header>
+    <nav class="tabs" role="tablist" aria-label="侧栏内容">
+      <button type="button" role="tab" id="tabLookup" aria-controls="paneLookup" aria-selected="true">查词</button>
+      <button type="button" role="tab" id="tabPage" aria-controls="panePage" aria-selected="false" tabindex="-1">本页</button>
+    </nav>
+
+    <main>
+      <section id="paneLookup" role="tabpanel" aria-labelledby="tabLookup">
+        <form id="searchForm" class="search" role="search">
+          <label class="sr-only" for="q">查一个词或短语</label>
+          <input id="q" type="search" placeholder="查一个词或短语…" autocomplete="off" spellcheck="false" maxlength="300" />
+          <button type="submit" class="btn">查询</button>
+        </form>
+        <div id="pinned" hidden>
+          <div class="pin-head">
+            <span>已固定 · <span id="pinSource"></span></span>
+            <button type="button" class="link" id="unpin">取消固定</button>
+          </div>
+          <div id="pinCard"></div>
+        </div>
+        <div id="searchCard" aria-live="polite"></div>
+        <p class="empty" id="lookupEmpty">在网页上选中单词后点「查词」，或在这里直接输入。词典查询在本机完成。</p>
+      </section>
+
+      <section id="panePage" role="tabpanel" aria-labelledby="tabPage" hidden>
+        <p class="muted" id="pageTitle">当前页面</p>
+        <ul class="item-list" id="pageItems"></ul>
+        <p class="empty" id="pageEmpty" hidden>这一页还没有收藏的词。</p>
+      </section>
+    </main>
+
+    <footer class="panel-foot">
+      <button type="button" class="link" id="openCenter">打开学习中心 ↗</button>
+    </footer>
+    <script type="module" src="learn/sidepanel.js"></script>
+  </body>
+</html>

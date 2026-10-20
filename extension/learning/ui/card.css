@@ -1,0 +1,431 @@
+/* Lookup card + selection bar. Used inside a shadow root on web pages, and as a
+   regular stylesheet in the side panel / learning center. Warm white + deep green
+   like the popup; follows the system dark mode. */
+
+.ll-card,
+.ll-bar {
+  --ll-bg: #fbfbf8;
+  --ll-panel: #ffffff;
+  --ll-fg: #202b2a;
+  --ll-muted: #66736f;
+  --ll-line: #e0e6df;
+  --ll-soft: #eef2ec;
+  --ll-accent: #285e50;
+  --ll-accent-fg: #ffffff;
+  --ll-tint: #e6f0e8;
+  --ll-error: #a8443b;
+  --ll-shadow: 0 10px 30px rgba(30, 50, 40, 0.16), 0 1px 3px rgba(30, 50, 40, 0.08);
+  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  color: var(--ll-fg);
+  text-align: left;
+  letter-spacing: normal;
+  text-transform: none;
+  box-sizing: border-box;
+}
+
+@media (prefers-color-scheme: dark) {
+  .ll-card,
+  .ll-bar {
+    --ll-bg: #1b2320;
+    --ll-panel: #212b27;
+    --ll-fg: #edf2ed;
+    --ll-muted: #a5b4ac;
+    --ll-line: #34403a;
+    --ll-soft: #2a3530;
+    --ll-accent: #a5d1b9;
+    --ll-accent-fg: #14201b;
+    --ll-tint: #2b3f34;
+    --ll-error: #f0a69c;
+    --ll-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  }
+}
+
+.ll-card *,
+.ll-bar * {
+  box-sizing: border-box;
+}
+
+.ll-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px 12px;
+  background: var(--ll-panel);
+  border: 1px solid var(--ll-line);
+  border-radius: 14px;
+}
+
+.ll-floating {
+  position: fixed;
+  z-index: 2147483646;
+  width: min(370px, calc(100vw - 16px));
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+  box-shadow: var(--ll-shadow);
+  overscroll-behavior: contain;
+}
+
+.ll-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.ll-title {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  min-width: 0;
+}
+
+.ll-title h2 {
+  margin: 0;
+  font-size: 19px;
+  line-height: 1.3;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.ll-kind {
+  font-size: 12px;
+  color: var(--ll-muted);
+}
+
+.ll-actions {
+  display: flex;
+  gap: 2px;
+  flex: none;
+}
+
+.ll-icon,
+.ll-link,
+.ll-btn,
+.ll-chip,
+.ll-bar button {
+  font: inherit;
+  cursor: pointer;
+}
+
+.ll-icon {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ll-muted);
+  font-size: 15px;
+}
+
+.ll-icon.ll-text {
+  font-size: 12px;
+}
+
+.ll-icon:hover,
+.ll-icon:focus-visible {
+  background: var(--ll-soft);
+  color: var(--ll-fg);
+}
+
+.ll-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: var(--ll-muted);
+  font-size: 12.5px;
+}
+
+.ll-ph {
+  font-family: "Charis SIL", "Doulos SIL", "Lucida Grande", Georgia, serif;
+  font-size: 14px;
+  color: var(--ll-fg);
+}
+
+.ll-note {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ll-muted);
+}
+
+.ll-guess::before {
+  content: "推测 · ";
+  color: var(--ll-error);
+}
+
+.ll-zh-summary {
+  margin: 0;
+  font-size: 13px;
+}
+
+.ll-senses {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ll-sense {
+  display: flex;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.ll-sense:hover {
+  background: var(--ll-soft);
+}
+
+.ll-sense.ll-on {
+  border-color: var(--ll-line);
+  background: var(--ll-tint);
+}
+
+.ll-sense input {
+  margin: 4px 0 0;
+  accent-color: var(--ll-accent);
+  flex: none;
+}
+
+.ll-sense-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ll-pos {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--ll-muted);
+}
+
+.ll-en {
+  font-size: 13.5px;
+}
+
+.ll-zh {
+  font-size: 13.5px;
+  color: var(--ll-fg);
+}
+
+.ll-en + .ll-zh {
+  color: var(--ll-muted);
+}
+
+.ll-context {
+  margin: 2px 0 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--ll-soft);
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.ll-label {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 11.5px;
+  color: var(--ll-muted);
+}
+
+.ll-context .ll-link {
+  display: block;
+  margin-top: 4px;
+}
+
+.ll-saved {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ll-accent);
+}
+
+.ll-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: center;
+}
+
+.ll-quiet {
+  font-size: 12.5px;
+}
+
+.ll-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+  flex-wrap: wrap;
+}
+
+.ll-right {
+  margin-left: auto;
+}
+
+.ll-btn {
+  padding: 7px 14px;
+  border: 1px solid var(--ll-line);
+  border-radius: 999px;
+  background: var(--ll-panel);
+  color: var(--ll-fg);
+  font-size: 13.5px;
+}
+
+.ll-btn:hover {
+  background: var(--ll-soft);
+}
+
+.ll-primary {
+  border-color: var(--ll-accent);
+  background: var(--ll-accent);
+  color: var(--ll-accent-fg);
+  font-weight: 600;
+}
+
+.ll-primary:hover {
+  filter: brightness(1.08);
+  background: var(--ll-accent);
+}
+
+.ll-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.ll-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ll-accent);
+  font-size: 12.5px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.ll-done {
+  color: var(--ll-accent);
+  font-weight: 600;
+}
+
+.ll-error {
+  color: var(--ll-error);
+  font-size: 12.5px;
+}
+
+.ll-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ll-chip {
+  padding: 3px 10px;
+  border: 1px solid var(--ll-line);
+  border-radius: 999px;
+  background: var(--ll-panel);
+  color: var(--ll-fg);
+  font-size: 12.5px;
+}
+
+.ll-chip.ll-on {
+  border-color: var(--ll-accent);
+  background: var(--ll-tint);
+}
+
+.ll-message {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.ll-message p {
+  margin: 0;
+  color: var(--ll-muted);
+  font-size: 13px;
+}
+
+.ll-source {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--ll-muted);
+}
+
+.ll-translation {
+  margin: 0;
+  font-size: 14px;
+  white-space: pre-wrap;
+}
+
+.ll-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.ll-skeleton i {
+  display: block;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--ll-soft);
+  animation: ll-pulse 1.1s ease-in-out infinite;
+}
+
+.ll-skeleton i:nth-child(2) {
+  width: 80%;
+}
+
+.ll-skeleton i:nth-child(3) {
+  width: 55%;
+}
+
+@keyframes ll-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* Selection action bar */
+.ll-bar {
+  position: fixed;
+  z-index: 2147483646;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--ll-line);
+  border-radius: 999px;
+  background: var(--ll-panel);
+  box-shadow: var(--ll-shadow);
+}
+
+.ll-bar button {
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ll-fg);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.ll-bar button:hover,
+.ll-bar button:focus-visible {
+  background: var(--ll-tint);
+}
+
+.ll-card :focus-visible,
+.ll-bar :focus-visible {
+  outline: 2px solid var(--ll-accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ll-skeleton i {
+    animation: none;
+  }
+}
