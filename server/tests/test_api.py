@@ -37,6 +37,7 @@ def settings(tmp_path):
     (web / "learn.html").write_text("<!doctype html><title>Learn</title>")
     (web / "index.html").write_text("<!doctype html><title>LocaLingo</title><a href='/learn.html'>进入我的个人空间</a>")
     (web / "index.css").write_text("body{}")
+    (web / "landing.js").write_text("console.log(1)")
     (web / "learn" / "learn.js").write_text("console.log(1)")
     (web / "manifest.json").write_text("{}")
     (tmp_path / "secret.txt").write_text("nope")
@@ -191,6 +192,7 @@ def test_web_app_files_only(client):
     assert "default-src 'self'" in r.headers["content-security-policy"]
     assert client.get("/index.css").status_code == 200
     assert client.get("/learn.html").status_code == 200
+    assert client.get("/landing.js").status_code == 200
     assert client.get("/learn/learn.js").status_code == 200
     assert client.get("/manifest.json").status_code == 404
     assert client.get("/learn/../../secret.txt").status_code == 404

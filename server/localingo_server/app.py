@@ -19,7 +19,7 @@ from .dictionary import Dictionary
 log = logging.getLogger("localingo")
 
 # Files of the extension that make up the hosted web app (nothing else is served).
-WEB_FILES = {"index.html", "index.css", "learn.html"}
+WEB_FILES = {"index.html", "index.css", "learn.html", "landing.js"}
 WEB_DIRS = {"learn", "learning", "icons"}
 CSP = (
     "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
