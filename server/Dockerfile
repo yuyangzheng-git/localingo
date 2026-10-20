@@ -28,7 +28,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
 WORKDIR /app
 COPY server/pyproject.toml server/README.md /app/server/
 COPY server/localingo_server /app/server/localingo_server
-RUN pip install --no-cache-dir /app/server
+# Override for deployments behind a firewall, e.g.
+#   --build-arg PIP_INDEX_URL=https://mirrors.cloud.tencent.com/pypi/simple
+ARG PIP_INDEX_URL=https://pypi.org/simple
+RUN pip install --no-cache-dir --index-url ${PIP_INDEX_URL} /app/server
 COPY extension/learn.html /app/web/learn.html
 COPY extension/index.html /app/web/index.html
 COPY extension/index.css /app/web/index.css
