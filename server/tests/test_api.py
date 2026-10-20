@@ -175,6 +175,16 @@ def test_dictionary_api(client):
     assert client.get("/api/dict/packages/../secret.txt", headers=h).status_code == 404
 
 
+def test_dictionary_is_public(client):
+    """Dictionary endpoints are accessible without login (local mode)."""
+    assert client.get("/api/dict/info").status_code == 200
+    assert client.get("/api/dict/info").json()["package"]["source_id"] == "ecdict"
+    data = client.get("/api/dict/entries?k=bank").json()
+    assert data["entries"]["bank"][0]["w"] == "bank"
+    pkg = client.get("/api/dict/info").json()["packages"][0]["file"]
+    assert client.get(f"/api/dict/packages/{pkg}").status_code == 200
+
+
 def test_web_app_files_only(client):
     r = client.get("/")
     assert r.status_code == 200 and "LocaLingo" in r.text and "进入我的个人空间" in r.text

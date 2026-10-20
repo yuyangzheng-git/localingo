@@ -120,7 +120,7 @@ function parseHash() {
 }
 
 async function route() {
-  if (env.kind === "web" && !env.signedIn) return showPage("login");
+  if (env.kind === "web" && !env.signedIn && location.hash === "#login") return showPage("login");
   const r = parseHash();
   showPage(r.page);
   if (r.page === "words") {
@@ -781,13 +781,15 @@ $("dictRemove").addEventListener("click", async () => {
 async function refreshSyncPanel() {
   const s = await env.sync.status();
   const configured = s.configured;
-  $("syncForm").hidden = env.kind === "web" ? true : configured;
+  $("syncForm").hidden = env.kind === "web" ? configured : configured;
   $("syncActions").hidden = !configured;
   $("syncStatus").textContent = configured
     ? `已登录 ${s.user} @ ${hostOf(s.server) || s.server}${s.lastAt ? ` · 上次同步 ${fmtDate.format(s.lastAt)}` : ""}`
     : s.needsLogin && s.server
       ? `与 ${hostOf(s.server)} 的登录已失效，请重新登录。`
-      : "未开启同步。登录你的 LocaLingo 服务器后，扩展和网页会共享生词本与复习进度。";
+      : env.kind === "web"
+        ? "本地模式 — 数据保存在本浏览器中。登录后可跨设备同步。"
+        : "未开启同步。登录你的 LocaLingo 服务器后，扩展和网页会共享生词本与复习进度。";
   if (s.lastError) say("syncMsg", `同步失败：${s.lastError}`, "error");
   if (env.kind === "extension" && s.server) $("syncServer").value = s.server;
   refreshSyncState();
@@ -795,7 +797,7 @@ async function refreshSyncPanel() {
 
 async function refreshSyncState() {
   const s = await env.sync.status();
-  $("syncState").textContent = !s.configured ? (env.kind === "web" ? "" : "本机") : s.lastError ? "同步出错" : s.lastAt ? `已同步 ${fmtDate.format(s.lastAt)}` : "等待同步";
+  $("syncState").textContent = !s.configured ? (env.kind === "web" ? "本地模式" : "本机") : s.lastError ? "同步出错" : s.lastAt ? `已同步 ${fmtDate.format(s.lastAt)}` : "等待同步";
   $("syncState").dataset.kind = s.lastError ? "error" : "";
 }
 
@@ -899,7 +901,6 @@ $("exportAnki").addEventListener("click", async () => {
 // --- badges & lifecycle -------------------------------------------------------------------------------
 
 async function refreshBadges() {
-  if (env.kind === "web" && !env.signedIn) return;
   const s = await store.reviewSummary({ dailyNew: prefs.dailyNew });
   $("navDue").hidden = !s.today_total;
   $("navDue").textContent = String(s.today_total);

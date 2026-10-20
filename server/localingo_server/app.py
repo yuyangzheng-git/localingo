@@ -174,18 +174,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # --- dictionary --------------------------------------------------------------------
 
     @app.get("/api/dict/info")
-    def dict_info(_user: dict = Depends(current_user)) -> dict:
+    def dict_info() -> dict:
         d: Dictionary = state["dictionary"]
         return {"package": d.info(), "packages": d.packages()}
 
     @app.get("/api/dict/entries")
-    def dict_entries(k: list[str] = Query(default=[]), _user: dict = Depends(current_user)) -> dict:
+    def dict_entries(k: list[str] = Query(default=[])) -> dict:
         if len(k) > 20 or any(len(x) > 120 for x in k):
             raise HTTPException(400, "too many or too long keys")
         return state["dictionary"].raw(k)
 
     @app.get("/api/dict/packages/{filename}")
-    def dict_package(filename: str, _user: dict = Depends(current_user)) -> FileResponse:
+    def dict_package(filename: str) -> FileResponse:
         path = state["dictionary"].package_path(filename)
         if not path:
             raise HTTPException(404, "没有这个词典包")

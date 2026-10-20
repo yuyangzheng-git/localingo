@@ -176,6 +176,7 @@ function webEnv() {
       return { ok: true };
     },
     notifyChange() {
+      if (!api.token) return; // local mode: no server to sync with
       clearTimeout(syncTimer);
       syncTimer = setTimeout(run, 3000);
     },

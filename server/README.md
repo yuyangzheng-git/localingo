@@ -34,8 +34,11 @@ learn.example.com {
 ```
 
 Then open `https://learn.example.com`. The root is a project-introduction landing
-page — click 「进入我的个人空间」 to reach the learning center, sign in, and in the
-extension's learning center (设置 → 同步) enter the same address and account.
+page — click 「进入我的个人空间」 to reach the learning center. You can use it
+directly in **local mode** (data saved in the browser, dictionary lookups work)
+without signing in. To sync across devices, create an account and sign in; then
+in the extension's learning center (设置 → 同步) enter the same address and
+account.
 
 ### Accounts
 
@@ -75,8 +78,9 @@ It serves the web app straight from `../extension` and dictionary packages from
 
 ## API
 
-All endpoints except `/api/health`, `/api/auth/login` and `/api/auth/signup` need
-`Authorization: Bearer <token>`.
+All endpoints except `/api/health`, `/api/auth/login`, `/api/auth/signup` and the
+`/api/dict/*` endpoints need `Authorization: Bearer <token>`. Dictionary lookups
+are public so the learning center works in local mode without signing in.
 
 | Method | Path | |
 | --- | --- | --- |

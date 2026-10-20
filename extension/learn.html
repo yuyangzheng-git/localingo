@@ -26,7 +26,7 @@
       <!-- Web app: sign in -->
       <section class="page narrow" id="page-login" hidden>
         <h1>登录 LocaLingo</h1>
-        <p class="muted">登录后可以在这里复习、整理生词，并与 Chrome 扩展同步。</p>
+        <p class="muted">登录后可以在这里复习、整理生词，并与 Chrome 扩展同步。不登录也可以直接使用本地模式。</p>
         <form id="loginForm" class="stack" novalidate>
           <label class="field">用户名 <input id="loginUser" autocomplete="username" required maxlength="32" /></label>
           <label class="field">密码 <input id="loginPassword" type="password" autocomplete="current-password" required maxlength="256" /></label>
@@ -36,6 +36,7 @@
           </div>
           <p class="form-msg" id="loginMsg" role="alert"></p>
         </form>
+        <p class="muted"><a href="#words" id="skipLogin">跳过登录，使用本地模式 →</a></p>
       </section>
 
       <!-- Onboarding (dismissible, shown above the word list) -->
