@@ -1,74 +1,308 @@
+/* LocaLingo injected UI. Everything is namespaced (web-translator-*) and the
+   in-page translation inherits the page's colors, so it reads well on both
+   light and dark sites. Display mode / style come from <html data-wt-mode /
+   data-wt-style>, set by content.js from the popup settings. */
+
+:root {
+  --wt-accent: #4f6bed;
+  --wt-accent-soft: rgba(79, 107, 237, 0.08);
+  --wt-ui-font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", system-ui, sans-serif;
+}
+
+/* --- In-page translation block ------------------------------------------ */
+/* Default ("plain"): the translation is just another paragraph in the page's own
+   typography — same font, size, weight and color as the original above it. */
+
+.web-translator-cn {
+  display: block;
+  margin: 0.25em 0 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: var(--wt-fs, inherit);
+  line-height: var(--wt-lh, inherit);
+  letter-spacing: inherit;
+  text-align: inherit;
+  text-transform: none;
+  white-space: normal;
+}
+
+/* Style: muted — same typography, slightly quieter */
+html[data-wt-style="muted"] .web-translator-cn {
+  opacity: 0.7;
+}
+
+/* Style: underline — same typography with a dotted underline */
+html[data-wt-style="underline"] .web-translator-cn {
+  text-decoration: underline dotted;
+  text-decoration-color: color-mix(in srgb, currentColor 55%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.3em;
+}
+
+/* --- Translation-only mode ---------------------------------------------- */
+/* Element units: collapse the original text (font-size 0) and hide inline
+   children; the translation restores the pinned size. Loose runs are wrapped
+   in .web-translator-orig, which is display:contents in bilingual mode. */
+
+.web-translator-orig {
+  display: contents;
+}
+
+html[data-wt-mode="translation"] .web-translator-host {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  margin-top: var(--wt-mt) !important;
+  margin-bottom: var(--wt-mb) !important;
+  padding: var(--wt-pad) !important;
+}
+
+html[data-wt-mode="translation"] .web-translator-host::marker {
+  font-size: var(--wt-fs);
+}
+
+html[data-wt-mode="translation"] .web-translator-host > :not(.web-translator-cn):not(.web-translator-spinner),
+html[data-wt-mode="translation"] .web-translator-orig {
+  display: none !important;
+}
+
+/* Inline, so it sits on the first line (next to list markers) like the original text. */
+html[data-wt-mode="translation"] .web-translator-cn {
+  display: inline;
+  margin: 0;
+  opacity: 1;
+  text-decoration: inherit;
+}
+
+/* --- Per-paragraph loading indicator ------------------------------------ */
+
+.web-translator-spinner {
+  display: inline-block;
+  width: 0.7em;
+  height: 0.7em;
+  min-width: 9px;
+  min-height: 9px;
+  margin-left: 0.4em;
+  vertical-align: -0.05em;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  opacity: 0.4;
+  animation: web-translator-spin 0.8s linear infinite;
+}
+
+@keyframes web-translator-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* --- Toast --------------------------------------------------------------- */
+
 #web-translator-toast {
   position: fixed;
   bottom: 24px;
   left: 50%;
-  transform: translateX(-50%);
-  background: #1f2937;
-  color: #fff;
-  padding: 10px 16px;
-  border-radius: 8px;
-  font: 14px/1.4 -apple-system, system-ui, sans-serif;
   z-index: 2147483647;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 10px 16px 10px 12px;
+  border-radius: 999px;
+  background: rgba(24, 26, 33, 0.92);
+  color: #f4f5f8;
+  font: 13px/1.4 var(--wt-ui-font);
+  letter-spacing: 0;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 8px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
-/* Bilingual block translation: shown below the original paragraph/heading */
-.web-translator-cn {
-  display: block;
-  margin: 4px 0 10px;
-  padding: 4px 10px;
-  border-left: 3px solid #2563eb;
-  background: rgba(37, 99, 235, 0.06);
-  color: #374151;
-  font: inherit;
+#web-translator-toast.web-translator-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, 0);
 }
 
-/* Per-paragraph loading spinner (inserted while a unit is being translated) */
-.web-translator-spinner {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  margin-left: 8px;
-  vertical-align: middle;
-  border: 2px solid rgba(37, 99, 235, 0.25);
-  border-top-color: #2563eb;
+.web-translator-toast-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+}
+
+#web-translator-toast[data-kind="progress"] .web-translator-toast-icon {
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #8fa2ff;
   animation: web-translator-spin 0.7s linear infinite;
 }
 
-@keyframes web-translator-spin {
-  to {
-    transform: rotate(360deg);
+#web-translator-toast[data-kind="success"] .web-translator-toast-icon { background: #22a06b; }
+#web-translator-toast[data-kind="success"] .web-translator-toast-icon::before { content: "✓"; }
+#web-translator-toast[data-kind="error"] .web-translator-toast-icon { background: #e5484d; }
+#web-translator-toast[data-kind="error"] .web-translator-toast-icon::before { content: "!"; }
+#web-translator-toast[data-kind="info"] .web-translator-toast-icon { background: var(--wt-accent); }
+#web-translator-toast[data-kind="info"] .web-translator-toast-icon::before { content: "i"; }
+
+.web-translator-toast-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Selection tooltip --------------------------------------------------- */
+
+.web-translator-tooltip {
+  --wt-tt-bg: #ffffff;
+  --wt-tt-fg: #1b1d24;
+  --wt-tt-muted: #6b7080;
+  --wt-tt-border: rgba(20, 24, 40, 0.1);
+  --wt-tt-hover: rgba(20, 24, 40, 0.06);
+  position: fixed;
+  z-index: 2147483647;
+  box-sizing: border-box;
+  width: 380px;
+  max-width: calc(100vw - 16px);
+  max-height: min(420px, calc(100vh - 16px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--wt-tt-border);
+  border-radius: 12px;
+  background: var(--wt-tt-bg);
+  color: var(--wt-tt-fg);
+  font: 14px/1.6 var(--wt-ui-font);
+  text-align: left;
+  box-shadow: 0 12px 36px rgba(15, 18, 30, 0.18), 0 2px 6px rgba(15, 18, 30, 0.08);
+  animation: web-translator-pop 0.16s ease-out;
+}
+
+@media (prefers-color-scheme: dark) {
+  .web-translator-tooltip {
+    --wt-tt-bg: #1e2028;
+    --wt-tt-fg: #eceef4;
+    --wt-tt-muted: #9a9fb0;
+    --wt-tt-border: rgba(255, 255, 255, 0.1);
+    --wt-tt-hover: rgba(255, 255, 255, 0.08);
   }
 }
 
-/* Selection-translation tooltip */
-.web-translator-tooltip {
-  position: fixed;
-  z-index: 2147483647;
-  width: 360px;
-  max-width: calc(100vw - 32px);
-  background: #1f2937;
-  color: #fff;
-  border-radius: 10px;
-  padding: 12px 28px 12px 14px;
-  font: 14px/1.5 -apple-system, system-ui, sans-serif;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+@keyframes web-translator-pop {
+  from { opacity: 0; transform: translateY(4px) scale(0.98); }
+  to { opacity: 1; transform: none; }
 }
 
-.web-translator-tooltip-close {
-  position: absolute;
-  top: 6px;
-  right: 8px;
-  border: none;
-  background: transparent;
-  color: #9ca3af;
-  font-size: 16px;
-  line-height: 1;
+.web-translator-tooltip *,
+.web-translator-tooltip *::before {
+  box-sizing: border-box;
+}
+
+.web-translator-tooltip-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 8px 0 14px;
+}
+
+.web-translator-tooltip-title {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--wt-accent);
+}
+
+.web-translator-tooltip-btn {
+  all: unset;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font: 12px/1.6 var(--wt-ui-font);
+  color: var(--wt-tt-muted);
   cursor: pointer;
-  padding: 2px 4px;
 }
 
-.web-translator-tooltip-close:hover {
-  color: #fff;
+.web-translator-tooltip-btn[data-action="close"] {
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.web-translator-tooltip-btn:hover,
+.web-translator-tooltip-btn:focus-visible {
+  background: var(--wt-tt-hover);
+  color: var(--wt-tt-fg);
+}
+
+.web-translator-tooltip-btn[hidden] {
+  display: none;
+}
+
+.web-translator-tooltip-original {
+  margin: 6px 14px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--wt-tt-border);
+  color: var(--wt-tt-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.web-translator-tooltip-original[hidden] {
+  display: none;
+}
+
+.web-translator-tooltip-body {
+  padding: 10px 14px 14px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  font-size: 15px;
+}
+
+.web-translator-tooltip[data-state="error"] .web-translator-tooltip-body {
+  color: #e5484d;
+  font-size: 13px;
+}
+
+.web-translator-dots {
+  display: inline-flex;
+  gap: 5px;
+  padding: 6px 0;
+}
+
+.web-translator-dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--wt-accent);
+  animation: web-translator-bounce 1s ease-in-out infinite;
+}
+
+.web-translator-dots i:nth-child(2) { animation-delay: 0.15s; }
+.web-translator-dots i:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes web-translator-bounce {
+  0%, 80%, 100% { opacity: 0.25; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-3px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .web-translator-tooltip,
+  #web-translator-toast {
+    animation: none;
+    transition: none;
+  }
 }

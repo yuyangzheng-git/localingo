@@ -12,6 +12,9 @@
 //   below it (bilingual). This preserves images and never breaks the layout, and
 //   "Remove translations" simply removes the appended blocks.
 // - Visible units are sent to the server in small batches.
+// - Live pages are followed: when a paragraph's text changes (e.g. an AI chat
+//   streaming its answer) or hidden content is expanded, the affected region is
+//   (re)translated once it has stopped changing for STABLE_MS.
 // - Translations are cached in chrome.storage.local per page (URL without hash),
 //   with least-recently-used eviction.
 //
@@ -43,7 +46,7 @@
     ".mw-sticky-header", ".vector-menu", ".vector-header", "#p-lang-btn",
     ".mw-indicators", "#siteNotice", ".siteNotice", ".mw-empty-elt",
     // our own injected elements (belt-and-suspenders)
-    ".web-translator-cn", ".web-translator-spinner",
+    ".web-translator-cn", ".web-translator-spinner", ".web-translator-orig",
   ].join(",");
 
   const CONTENT_ROOTS = [
@@ -66,6 +69,12 @@
   const CACHE_MAX_PAGES = 200;
   const CACHE_SAVE_DELAY_MS = 1000;
 
+  // Live updates: a changed region must be quiet this long before (re)translating,
+  // so streaming text is translated once it is complete rather than per token.
+  const STABLE_MS = 1000;
+  const DIRTY_TICK_MS = 400;
+  const WATCHED_ATTRIBUTES = ["class", "style", "hidden", "open", "aria-hidden", "aria-expanded"];
+
   // A unit is { host, run }: `host` is the element observed for visibility;
   // `run` is null for a whole-element unit, or the list of loose inline nodes
   // (text + inline elements) inside `host` that form one segment. Each unit is
@@ -77,6 +86,8 @@
   let intersectionObserver = null;
   let mutationObserver = null;
   let session = 0;                    // bumped on restore; stale results are dropped
+  let dirty = new Map();              // block element -> time of its last mutation
+  let dirtyTimer = null;
 
   let queue = [];
   let processing = false;
@@ -127,6 +138,8 @@
     if (!isBlockElement(el)) return false;
     if (!hasText(el)) return false;
     if (isHidden(el)) return false;
+    // Already holds a translated loose run: that run is the unit, not the block.
+    if (el.querySelector(".web-translator-cn")) return false;
     for (const child of el.children) {
       if (isSkipped(child)) continue;
       if (isBlockElement(child) && hasText(child)) return false; // recurse into it
@@ -145,6 +158,23 @@
       .join("")
       .replace(/\s+/g, " ")
       .trim();
+  }
+
+  // Plain-text fingerprint of a subtree, ignoring our own injected nodes and
+  // independent of display mode — used to notice when the source text changed.
+  function textSig(root) {
+    let out = "";
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (n.parentElement && n.parentElement.closest(".web-translator-cn, .web-translator-spinner")) continue;
+      out += n.textContent;
+    }
+    return out.replace(/\s+/g, " ").trim();
+  }
+
+  function unitSig(unit) {
+    if (!unit.run) return textSig(unit.host);
+    return unit.run.map((n) => n.textContent).join("").replace(/\s+/g, " ").trim();
   }
 
   // Worth translating: at least 2 chars and some Latin letters (skips pure
@@ -196,7 +226,9 @@
           continue;
         }
         flush();
-        if (translatedKeys.has(child) || isHidden(child)) continue;
+        // No rendered text (e.g. inside a closed <details>): nothing to translate yet;
+        // the live-update pass picks it up when it is revealed.
+        if (translatedKeys.has(child) || isHidden(child) || !hasText(child)) continue;
         if (isUnit(child)) out.push({ host: child, run: null });
         else walk(child);
       }
@@ -205,52 +237,160 @@
     return out;
   }
 
+  // --- display settings -------------------------------------------------
+
+  // displayMode: "bilingual" (Chinese below the original) | "translation" (Chinese only).
+  // translationStyle: "plain" (looks like the page's own text) | "muted" | "underline".
+  const DEFAULT_SETTINGS = { displayMode: "bilingual", translationStyle: "plain" };
+  const STYLES = new Set(["plain", "muted", "underline"]);
+  let settings = { ...DEFAULT_SETTINGS };
+
+  function applySettings() {
+    const root = document.documentElement;
+    root.dataset.wtMode = settings.displayMode;
+    root.dataset.wtStyle = STYLES.has(settings.translationStyle) ? settings.translationStyle : "plain";
+    // In translation-only mode, hovering a translation shows the original.
+    for (const entry of cnBlocks.values()) {
+      entry.span.title = settings.displayMode === "translation" ? entry.source : "";
+    }
+  }
+
+  async function loadSettings() {
+    try {
+      settings = { ...DEFAULT_SETTINGS, ...(await chrome.storage.sync.get(DEFAULT_SETTINGS)) };
+    } catch {
+      settings = { ...DEFAULT_SETTINGS };
+    }
+    applySettings();
+  }
+
+  try {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== "sync") return;
+      let changed = false;
+      for (const k of Object.keys(DEFAULT_SETTINGS)) {
+        if (changes[k]) {
+          settings[k] = changes[k].newValue ?? DEFAULT_SETTINGS[k];
+          changed = true;
+        }
+      }
+      if (changed) applySettings();
+    });
+  } catch {
+    // storage events unavailable — settings apply on next page load
+  }
+
   // --- toast & selection tooltip ------------------------------------------
 
-  function showToast(message) {
+  // kind: "progress" (spinner, stays until replaced) | "success" | "error" | "info".
+  function showToast(message, kind = "info") {
     let toast = document.getElementById("web-translator-toast");
     if (!toast) {
       toast = document.createElement("div");
       toast.id = "web-translator-toast";
+      toast.setAttribute("role", "status");
+      toast.setAttribute("aria-live", "polite");
+      const icon = document.createElement("span");
+      icon.className = "web-translator-toast-icon";
+      const text = document.createElement("span");
+      text.className = "web-translator-toast-text";
+      toast.append(icon, text);
       document.documentElement.appendChild(toast);
     }
-    toast.textContent = message;
-    toast.style.display = "block";
+    toast.dataset.kind = kind;
+    toast.querySelector(".web-translator-toast-text").textContent = message;
+    toast.classList.add("web-translator-visible");
     clearTimeout(showToast._timer);
-    showToast._timer = setTimeout(() => { toast.style.display = "none"; }, 4000);
+    if (kind !== "progress") {
+      showToast._timer = setTimeout(
+        () => toast.classList.remove("web-translator-visible"),
+        kind === "error" ? 8000 : 3500,
+      );
+    }
   }
 
-  function showResultTooltip(translation) {
+  function closeTooltip() {
     document.querySelectorAll(".web-translator-tooltip").forEach((el) => el.remove());
+    document.removeEventListener("keydown", onTooltipKey, true);
+    document.removeEventListener("mousedown", onTooltipOutside, true);
+  }
 
-    let x = window.innerWidth / 2;
-    let y = window.innerHeight / 2;
+  function onTooltipKey(e) {
+    if (e.key === "Escape") closeTooltip();
+  }
+
+  function onTooltipOutside(e) {
+    if (!e.target.closest || !e.target.closest(".web-translator-tooltip")) closeTooltip();
+  }
+
+  function positionTooltip(tooltip, rect) {
+    const margin = 8;
+    const width = tooltip.offsetWidth;
+    const height = tooltip.offsetHeight;
+    let left = rect ? rect.left : (window.innerWidth - width) / 2;
+    left = Math.max(margin, Math.min(left, window.innerWidth - width - margin));
+    let top = rect ? rect.bottom + margin : (window.innerHeight - height) / 2;
+    // Flip above the selection when there's no room below.
+    if (rect && top + height > window.innerHeight - margin && rect.top - height - margin > margin) {
+      top = rect.top - height - margin;
+    }
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${Math.max(margin, top)}px`;
+  }
+
+  function selectionRect() {
     const sel = window.getSelection();
-    if (sel && sel.rangeCount > 0) {
-      const rect = sel.getRangeAt(0).getBoundingClientRect();
-      if (rect && (rect.left || rect.top)) {
-        x = rect.left;
-        y = rect.bottom;
-      }
+    if (!sel || sel.rangeCount === 0) return null;
+    const rect = sel.getRangeAt(0).getBoundingClientRect();
+    return rect && (rect.width || rect.height) ? rect : null;
+  }
+
+  // state: { original, translation?, error?, loading? }
+  function showResultTooltip(state) {
+    let tooltip = document.querySelector(".web-translator-tooltip");
+    if (!tooltip) {
+      tooltip = document.createElement("div");
+      tooltip.className = "web-translator-tooltip";
+      tooltip.setAttribute("role", "dialog");
+      tooltip.setAttribute("aria-label", "划词翻译");
+      tooltip.innerHTML = `
+        <div class="web-translator-tooltip-head">
+          <span class="web-translator-tooltip-title">LocaLingo</span>
+          <button type="button" class="web-translator-tooltip-btn" data-action="copy" title="复制译文">复制</button>
+          <button type="button" class="web-translator-tooltip-btn" data-action="close" title="关闭 (Esc)" aria-label="关闭">×</button>
+        </div>
+        <div class="web-translator-tooltip-original"></div>
+        <div class="web-translator-tooltip-body"></div>`;
+      tooltip.addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-action]");
+        if (!btn) return;
+        if (btn.dataset.action === "close") closeTooltip();
+        if (btn.dataset.action === "copy") {
+          const text = tooltip.querySelector(".web-translator-tooltip-body").textContent;
+          navigator.clipboard.writeText(text).then(() => {
+            btn.textContent = "已复制";
+            setTimeout(() => { btn.textContent = "复制"; }, 1200);
+          }).catch(() => {});
+        }
+      });
+      document.documentElement.appendChild(tooltip);
+      document.addEventListener("keydown", onTooltipKey, true);
+      document.addEventListener("mousedown", onTooltipOutside, true);
+      tooltip._rect = selectionRect();
     }
 
-    const tooltip = document.createElement("div");
-    tooltip.className = "web-translator-tooltip";
-
-    const close = document.createElement("button");
-    close.className = "web-translator-tooltip-close";
-    close.textContent = "×";
-    close.addEventListener("click", () => tooltip.remove());
-
-    const body = document.createElement("div");
-    body.textContent = translation;
-
-    tooltip.append(close, body);
-    document.documentElement.appendChild(tooltip);
-
-    const width = 360;
-    tooltip.style.left = `${Math.max(8, Math.min(x, window.innerWidth - width - 16))}px`;
-    tooltip.style.top = `${y + 8}px`;
+    const original = tooltip.querySelector(".web-translator-tooltip-original");
+    const body = tooltip.querySelector(".web-translator-tooltip-body");
+    original.textContent = state.original || "";
+    original.hidden = !state.original;
+    tooltip.dataset.state = state.loading ? "loading" : state.error ? "error" : "done";
+    tooltip.querySelector('[data-action="copy"]').hidden = !state.translation;
+    if (state.loading) {
+      body.innerHTML = '<span class="web-translator-dots"><i></i><i></i><i></i></span>';
+    } else {
+      body.textContent = state.error ? `翻译失败：${state.error}` : state.translation;
+    }
+    positionTooltip(tooltip, tooltip._rect);
   }
 
   // --- cache ---------------------------------------------------------------
@@ -313,21 +453,106 @@
 
   // --- translate & append --------------------------------------------------
 
+  // Run `fn` (which changes the DOM) without our mutation observer reacting to
+  // its changes: page mutations recorded so far are handled first, then the
+  // records our own change produced are discarded.
+  function withoutObserving(fn) {
+    if (mutationObserver) onMutations(mutationObserver.takeRecords());
+    try {
+      return fn();
+    } finally {
+      if (mutationObserver) mutationObserver.takeRecords();
+    }
+  }
+
+  // When all of a unit's text sits in one inline element (e.g. <h2><a>Title</a></h2>
+  // or <p><em>…</em></p>), return that element so the translation placed inside it
+  // gets the same link color, weight and decoration as the original.
+  function styleTarget(host) {
+    let el = host;
+    for (;;) {
+      const nodes = [...el.childNodes].filter((n) =>
+        n.nodeType === Node.ELEMENT_NODE
+          ? !n.classList.contains("web-translator-spinner")
+          : n.nodeType === Node.TEXT_NODE && n.textContent.trim(),
+      );
+      if (nodes.length !== 1 || nodes[0].nodeType !== Node.ELEMENT_NODE) return el;
+      const child = nodes[0];
+      if (isSkipped(child) || isBlockElement(child) || isHidden(child)) return el;
+      el = child;
+    }
+  }
+
   // Place `node` below the unit: inside the element for whole-element units, or
   // right after the last node of an inline run. A <span> with display:block is
   // valid inside <p>, <td>, <li>, <h1>, etc., so this never produces invalid markup.
   function insertForUnit(unit, node) {
-    if (unit.run) unit.run[unit.run.length - 1].after(node);
-    else unit.host.appendChild(node);
+    withoutObserving(() => {
+      if (unit.run) unit.run[unit.run.length - 1].after(node);
+      else unit.host.appendChild(node);
+    });
   }
 
-  function appendTranslation(unit, translation) {
+  function appendTranslation(unit, translation, source) {
     const span = document.createElement("span");
     span.className = "web-translator-cn";
     span.textContent = translation;
-    insertForUnit(unit, span);
+    span.lang = "zh-CN";
+    if (settings.displayMode === "translation") span.title = source;
+    const entry = { span, source, sig: unitSig(unit), unitHost: unit.host, host: null, wrapper: null };
+
+    withoutObserving(() => {
+      if (unit.run) {
+        const cs = getComputedStyle(unit.host);
+        span.style.setProperty("--wt-fs", cs.fontSize);
+        span.style.setProperty("--wt-lh", cs.lineHeight);
+        // Wrap the loose run so translation-only mode can hide it. The wrapper is
+        // display:contents, so bilingual layout is unchanged.
+        const wrapper = document.createElement("span");
+        wrapper.className = "web-translator-orig";
+        unit.run[0].before(wrapper);
+        wrapper.append(...unit.run);
+        wrapper.after(span);
+        entry.wrapper = wrapper;
+      } else {
+        const target = styleTarget(unit.host);
+        const cs = getComputedStyle(target);
+        // Pin the original's font size / line height and em-based box spacing, so
+        // translation-only mode (font-size:0 on the original) doesn't change them.
+        const pinned = {
+          "--wt-fs": cs.fontSize,
+          "--wt-lh": cs.lineHeight,
+          "--wt-mt": cs.marginTop,
+          "--wt-mb": cs.marginBottom,
+          "--wt-pad": `${cs.paddingTop} ${cs.paddingRight} ${cs.paddingBottom} ${cs.paddingLeft}`,
+        };
+        for (const [k, v] of Object.entries(pinned)) target.style.setProperty(k, v);
+        target.classList.add("web-translator-host");
+        target.appendChild(span);
+        entry.host = target;
+      }
+    });
     translatedKeys.add(keyOf(unit));
-    cnBlocks.set(keyOf(unit), span);
+    cnBlocks.set(keyOf(unit), entry);
+  }
+
+  function removeTranslation(entry) {
+    withoutObserving(() => {
+      entry.span.remove();
+      if (entry.wrapper && entry.wrapper.isConnected) entry.wrapper.replaceWith(...entry.wrapper.childNodes);
+      if (entry.host) {
+        entry.host.classList.remove("web-translator-host");
+        for (const k of ["--wt-fs", "--wt-lh", "--wt-mt", "--wt-mb", "--wt-pad"]) {
+          entry.host.style.removeProperty(k);
+        }
+        if (!entry.host.getAttribute("style")) entry.host.removeAttribute("style");
+        if (!entry.host.getAttribute("class")) entry.host.removeAttribute("class");
+      }
+    });
+  }
+
+  function entrySig(entry) {
+    return entry.wrapper ? textSig(entry.wrapper) : textSig(entry.unitHost);
   }
 
   function isLive(unit) {
@@ -343,7 +568,7 @@
     const todo = [];
     for (const item of batch) {
       if (c[item.text]) {
-        appendTranslation(item.unit, c[item.text]);
+        appendTranslation(item.unit, c[item.text], item.text);
         stats.cached++;
       } else {
         todo.push(item);
@@ -370,16 +595,21 @@
       lastError = err && err.message ? err.message : String(err);
     }
 
-    for (const item of todo) item.spinner.remove();
+    withoutObserving(() => {
+      for (const item of todo) item.spinner.remove();
+    });
     if (mySession !== session) return; // translations were removed meanwhile
 
     todo.forEach((item, i) => {
       const translation = translations && translations[i];
-      if (!translation || !isLive(item.unit)) {
+      if (!isLive(item.unit) || unitSig(item.unit) !== item.sig) {
+        return; // the text changed while translating; the live-update pass redoes it
+      }
+      if (!translation) {
         stats.failed++;
         return;
       }
-      appendTranslation(item.unit, translation);
+      appendTranslation(item.unit, translation, item.text);
       c[item.text] = translation;
       stats.translated++;
     });
@@ -415,7 +645,7 @@
       }
       if (batch.length > 0 && chars + text.length > BATCH_MAX_CHARS) break;
       queue.shift();
-      batch.push({ unit, text });
+      batch.push({ unit, text, sig: unitSig(unit) });
       chars += text.length;
     }
     return batch;
@@ -424,10 +654,16 @@
   async function processQueue() {
     if (processing) return;
     processing = true;
+    let userVisible = false; // any unit from the page pass / scrolling (not a live update)
     try {
       while (queue.length > 0) {
         const batch = nextBatch();
         if (batch.length === 0) continue;
+        if (batch.some((item) => !item.unit.live)) userVisible = true;
+        if (intersectionObserver && userVisible) {
+          const done = stats.translated + stats.cached;
+          showToast(`正在翻译… 已完成 ${done} 段，队列中 ${queue.length + batch.length} 段`, "progress");
+        }
         try {
           await translateBatch(batch);
         } finally {
@@ -437,13 +673,24 @@
     } finally {
       processing = false;
     }
-    if (intersectionObserver) reportStats();
+    if (!intersectionObserver) return;
+    // Page/scroll passes report their result; live updates only speak up on errors.
+    if (userVisible || stats.failed > reportStats.failedShown) reportStats();
   }
 
   function reportStats() {
-    let line = `Translated ${stats.translated} · ${stats.cached} cached · ${stats.failed} failed · ${stats.skipped} skipped`;
-    if (stats.failed > 0 && lastError) line += ` — ${lastError}`;
-    showToast(line);
+    const parts = [`已翻译 ${stats.translated} 段`];
+    if (stats.cached) parts.push(`缓存 ${stats.cached}`);
+    if (stats.failed) parts.push(`失败 ${stats.failed}`);
+    if (stats.skipped) parts.push(`跳过 ${stats.skipped}`);
+    let line = parts.join(" · ");
+    let kind = "success";
+    if (stats.failed > 0) {
+      kind = "error";
+      if (lastError) line += ` — ${lastError}`;
+    }
+    reportStats.failedShown = stats.failed;
+    showToast(line, kind);
     try {
       chrome.storage.session.set({ "wt:lastStats": { ...stats, line } });
     } catch {
@@ -475,19 +722,68 @@
     }
   }
 
-  function observeNewNodes(nodes) {
-    for (const node of nodes) {
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        if (isSkipped(node)) continue;
-        // An added node may itself be a unit (e.g. a single new <p>).
-        if (isUnit(node)) {
-          observeUnit({ host: node, run: null });
-          continue;
-        }
-      } else if (node.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) {
-        continue;
+  // --- live updates ------------------------------------------------------
+
+  function blockAncestor(node) {
+    let el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+    while (el && el !== document.body && !isBlockElement(el)) el = el.parentElement;
+    return el;
+  }
+
+  // Page mutations mark their nearest block ancestor dirty; processDirty picks a
+  // region up once it has been quiet for STABLE_MS.
+  function onMutations(mutations) {
+    if (!mutationObserver) return;
+    const now = Date.now();
+    const root = findContentRoot();
+    for (const m of mutations) {
+      const target = m.target;
+      if (m.type === "attributes") {
+        // Page-level toggles (scroll classes on <body>, themes) aren't reveals.
+        if (target === document.body || target === document.documentElement || target.contains(root)) continue;
       }
-      for (const unit of collectUnits(node)) observeUnit(unit);
+      const el = blockAncestor(target);
+      if (!el || !el.isConnected || isSkipped(el)) continue;
+      dirty.set(el, now);
+    }
+    if (dirty.size && !dirtyTimer) dirtyTimer = setInterval(processDirty, DIRTY_TICK_MS);
+  }
+
+  function stillChanging(el, now) {
+    const t = dirty.get(el);
+    return t !== undefined && now - t < STABLE_MS;
+  }
+
+  function processDirty() {
+    const now = Date.now();
+    const ready = [];
+    for (const [el, t] of dirty) if (now - t >= STABLE_MS) ready.push(el);
+    for (const el of ready) dirty.delete(el);
+    if (!dirty.size) {
+      clearInterval(dirtyTimer);
+      dirtyTimer = null;
+    }
+    // Nested regions are covered by their outermost ready ancestor's rescan.
+    const roots = ready.filter((el) => el.isConnected && !ready.some((o) => o !== el && o.contains(el)));
+    for (const el of roots) rescan(el, now);
+  }
+
+  function rescan(el, now) {
+    // 1. Drop translations whose source changed, or that the page re-rendered away.
+    for (const [key, entry] of cnBlocks) {
+      const gone = !key.isConnected;
+      if (!gone && !(el.contains(entry.unitHost) || entry.unitHost.contains(el))) continue;
+      if (!gone && entry.span.isConnected && entrySig(entry) === entry.sig) continue;
+      removeTranslation(entry);
+      cnBlocks.delete(key);
+      translatedKeys.delete(key);
+    }
+    // 2. Collect untranslated units (new, changed, or just revealed) in the region.
+    if (!el.isConnected || isSkipped(el) || isHidden(el)) return;
+    const units = isUnit(el) ? [{ host: el, run: null }] : collectUnits(el);
+    for (const unit of units) {
+      unit.live = true; // live updates translate quietly (no progress toast)
+      if (!stillChanging(unit.host, now)) observeUnit(unit);
     }
   }
 
@@ -496,6 +792,7 @@
 
     resetStats();
     lastError = null;
+    reportStats.failedShown = 0;
     const root = findContentRoot();
 
     intersectionObserver = new IntersectionObserver(onIntersect, {
@@ -504,15 +801,19 @@
       threshold: 0,
     });
 
-    mutationObserver = new MutationObserver((mutations) => {
-      for (const m of mutations) observeNewNodes(m.addedNodes);
+    mutationObserver = new MutationObserver(onMutations);
+    mutationObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: WATCHED_ATTRIBUTES,
     });
-    mutationObserver.observe(document.body, { childList: true, subtree: true });
 
     // Visible text translates now; the rest as it scrolls into view.
     for (const unit of collectUnits(root, true)) observeUnit(unit);
 
-    showToast("Translating text — scroll for more.");
+    showToast("正在翻译… 滚动页面会继续翻译后面的内容", "progress");
   }
 
   function stopTranslating() {
@@ -525,6 +826,9 @@
       mutationObserver = null;
     }
     observed.clear();
+    dirty.clear();
+    clearInterval(dirtyTimer);
+    dirtyTimer = null;
   }
 
   function restorePage() {
@@ -532,8 +836,8 @@
     stopTranslating();
     session++;
     let count = 0;
-    for (const span of cnBlocks.values()) {
-      if (span.isConnected) span.remove();
+    for (const entry of cnBlocks.values()) {
+      removeTranslation(entry);
       count++;
     }
     document.querySelectorAll(".web-translator-spinner").forEach((el) => el.remove());
@@ -542,8 +846,8 @@
     pending = new WeakSet();
     queue = [];
     resetStats();
-    if (count) showToast(`Removed ${count} translations.`);
-    else showToast(wasRunning ? "Translation stopped." : "Nothing to restore.");
+    if (count) showToast(`已恢复原文（移除 ${count} 段译文）`);
+    else showToast(wasRunning ? "已停止翻译" : "当前页面没有译文");
   }
 
   function resetStats() {
@@ -553,6 +857,8 @@
     stats.failed = 0;
     stats.skipped = 0;
   }
+
+  loadSettings();
 
   window.addEventListener("pagehide", () => {
     if (saveTimer) flushCache();
@@ -579,11 +885,15 @@
       return;
     }
     if (message.type === MSG_STATS) {
-      sendResponse({ ok: true, stats: { ...stats } });
+      sendResponse({
+        ok: true,
+        stats: { ...stats },
+        active: !!intersectionObserver || cnBlocks.size > 0,
+      });
       return;
     }
     if (message.type === MSG_SHOW_RESULT) {
-      showResultTooltip(message.translation);
+      showResultTooltip(message);
       sendResponse({ ok: true });
       return;
     }

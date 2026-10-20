@@ -63,17 +63,21 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   const text = info.selectionText.trim();
   if (!text) return;
 
-  let translation;
-  try {
-    [translation] = await translateTexts([text]);
-  } catch (err) {
-    translation = `翻译失败: ${err && err.message ? err.message : err}`;
-  }
+  const show = async (state) => {
+    try {
+      await chrome.tabs.sendMessage(tab.id, { type: "show-result", original: text, ...state });
+      return true;
+    } catch {
+      return false; // Content script not available (e.g. chrome:// page).
+    }
+  };
 
+  if (!(await show({ loading: true }))) return;
   try {
-    await chrome.tabs.sendMessage(tab.id, { type: "show-result", translation });
-  } catch {
-    // Content script not available (e.g. chrome:// page) — nothing to do.
+    const [translation] = await translateTexts([text]);
+    await show({ translation });
+  } catch (err) {
+    await show({ error: err && err.message ? err.message : String(err) });
   }
 });
 

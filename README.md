@@ -25,6 +25,15 @@ never leaves your machine.
 
 - **Bilingual** — article text, headings, and captions keep the original English,
   with the Simplified Chinese appended below in a subtle highlighted block.
+- **Two display modes** — *bilingual* (Chinese below each paragraph) or *translation
+  only* (the original is hidden; hover a paragraph to see it). Switch anytime from the
+  popup; the page updates live.
+- **Native look** — by default a translation is just another paragraph in the page's
+  own font, size, weight and color (inside the link when the original is a link). Muted
+  and dotted-underline styles are optional.
+- **Follows live pages** — text that changes after translation (e.g. an AI chat
+  streaming its answer) is re-translated once it stops changing, and content revealed
+  by expanding a section is translated when it appears.
 - **Content only** — navigation, controls, hidden/accessibility text, SVG, code and
   form fields are left untouched, so a page's UI chrome is never mangled.
 - **Whole-sentence translation** — each paragraph / heading / list item is translated
@@ -40,7 +49,8 @@ never leaves your machine.
 - **Completion counter** — a toast reports `Translated N · cached N · failed N ·
   skipped N` so you know the page has finished.
 - **Selection translation** — select text → right-click → *翻译成中文* shows a
-  floating tooltip.
+  floating card with the original, a loading state, and a copy button (Esc to close;
+  follows light/dark mode).
 
 <p align="center">
   <img src="docs/images/selection.png" alt="Select text, right-click, and a floating translation tooltip appears" width="80%">

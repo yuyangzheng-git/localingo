@@ -1,27 +1,80 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
-    <header>
-      <h1>LocaLingo</h1>
-      <p class="status" id="status">Checking server…</p>
+    <header class="header">
+      <img class="logo" src="icons/icon48.png" alt="" width="28" height="28" />
+      <div class="brand">
+        <h1>LocaLingo</h1>
+        <p class="tagline">本地英译中 · 不上传任何内容</p>
+      </div>
+      <span class="pill" id="status" data-state="checking" title="">
+        <span class="dot"></span><span id="statusText">检查中</span>
+      </span>
     </header>
-    <div class="actions">
-      <button id="translate" class="primary">Translate this page</button>
-      <button id="restore">Remove translations</button>
-    </div>
-    <p class="last-stats" id="lastStats"></p>
-    <label class="field">
-      <span>Server URL</span>
-      <input id="serverUrl" type="text" placeholder="http://127.0.0.1:8765" spellcheck="false" />
-    </label>
-    <label class="field">
-      <span>Auth token</span>
-      <input id="authToken" type="password" placeholder="printed by: uv run web-translator" spellcheck="false" autocomplete="off" />
-    </label>
+
+    <p class="notice" id="notice" hidden></p>
+
+    <section class="main-action">
+      <button id="toggle" class="primary" type="button">
+        <span id="toggleLabel">翻译此页</span>
+        <kbd>Alt+T</kbd>
+      </button>
+      <p class="last-stats" id="lastStats"></p>
+    </section>
+
+    <section class="group">
+      <h2>显示方式</h2>
+      <div class="segmented" role="radiogroup" aria-label="显示方式" id="displayMode">
+        <button type="button" role="radio" data-value="bilingual">
+          <span class="seg-icon" aria-hidden="true">
+            <i class="l en"></i><i class="l cn"></i><i class="l en short"></i><i class="l cn short"></i>
+          </span>
+          双语对照
+        </button>
+        <button type="button" role="radio" data-value="translation">
+          <span class="seg-icon" aria-hidden="true">
+            <i class="l cn"></i><i class="l cn"></i><i class="l cn short"></i>
+          </span>
+          仅译文
+        </button>
+      </div>
+    </section>
+
+    <section class="group" id="styleGroup">
+      <h2>译文样式</h2>
+      <div class="styles" role="radiogroup" aria-label="译文样式" id="translationStyle">
+        <button type="button" role="radio" data-value="plain">
+          <span class="preview plain">译文</span>原样
+        </button>
+        <button type="button" role="radio" data-value="muted">
+          <span class="preview muted">译文</span>弱化
+        </button>
+        <button type="button" role="radio" data-value="underline">
+          <span class="preview underline">译文</span>下划线
+        </button>
+      </div>
+    </section>
+
+    <details class="settings" id="settings">
+      <summary>服务器设置</summary>
+      <label class="field">
+        <span>服务器地址</span>
+        <input id="serverUrl" type="text" placeholder="http://127.0.0.1:8765" spellcheck="false" />
+      </label>
+      <label class="field">
+        <span>访问令牌</span>
+        <span class="input-row">
+          <input id="authToken" type="password" placeholder="粘贴服务器输出的令牌" spellcheck="false" autocomplete="off" />
+          <button type="button" class="ghost" id="revealToken" aria-label="显示令牌">显示</button>
+        </span>
+      </label>
+      <p class="hint">在终端运行 <code>uv run web-translator</code>，把输出中的令牌粘贴到这里。</p>
+    </details>
+
     <script src="popup.js"></script>
   </body>
 </html>
