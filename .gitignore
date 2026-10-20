@@ -26,3 +26,7 @@ wheels/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
+
+# Dictionary sources and built packages (large, licensed separately)
+data/
+node_modules/

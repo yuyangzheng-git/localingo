@@ -1,0 +1,11 @@
+{
+  "name": "localingo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/test_popup.mjs tests/js/*.test.mjs"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "^6.0.0"
+  }
+}
