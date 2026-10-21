@@ -77,7 +77,7 @@ say "安装 Python 依赖（首次需要几分钟）"
 (cd "$SERVICE_DIR" && uv sync --frozen --no-dev --python 3.12)
 
 if [[ ! -d "$HOME/models/qwen3-1.7b-web-v3a-mlx" ]]; then
-  say "下载翻译模型 $MODEL（约 3–4 GB，只需一次）"
+  say "下载翻译模型 ${MODEL}（约 3–4 GB，只需一次）"
   if ! (cd "$SERVICE_DIR" && HF_ENDPOINT="${HF_ENV:-https://huggingface.co}" .venv/bin/python -c "from huggingface_hub import snapshot_download; snapshot_download('$MODEL')"); then
     warn "模型下载未完成，服务会在第一次翻译时继续下载。"
   fi
@@ -106,15 +106,28 @@ $( [[ -n "$HF_ENV" ]] && printf '    <key>HF_ENDPOINT</key><string>%s</string>\n
 </dict>
 </plist>
 PLIST
+# An older translator started by hand (e.g. `uv run web-translator`) would keep the
+# port, and the extension would keep talking to it.
+for pid in $(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null); do
+  if ps -o command= -p "$pid" | grep -q web-translator; then
+    say "停止占用端口 $PORT 的旧版翻译服务（进程 ${pid}）"
+    kill "$pid" 2>/dev/null || true
+    sleep 1
+  else
+    warn "端口 $PORT 被其他程序占用：$(ps -o command= -p "$pid")"
+  fi
+done
 launchctl bootstrap "gui/$(id -u)" "$PLIST"
 
+# Ready = our service answers (token-era versions report authorized: false).
+ready() { curl -fsS -m 2 "http://127.0.0.1:$PORT/health" 2>/dev/null | grep -q '"authorized":true'; }
 for _ in $(seq 1 30); do
-  curl -fsS -m 2 "http://127.0.0.1:$PORT/health" >/dev/null 2>&1 && break
+  ready && break
   sleep 1
 done
-curl -fsS -m 2 "http://127.0.0.1:$PORT/health" >/dev/null 2>&1 \
+ready \
   && say "本地翻译服务已运行：http://127.0.0.1:$PORT" \
-  || warn "服务还没响应，日志在 $LOG_DIR/translator.log"
+  || warn "服务还没就绪，日志在 $LOG_DIR/translator.log"
 
 # --- Chrome extension ------------------------------------------------------------------
 say "放置 Chrome 扩展到 $EXT_DIR"
