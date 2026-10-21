@@ -1,4 +1,7 @@
-const DEFAULT_SERVER_URL = "http://127.0.0.1:8765";
+// The local translation service set up by the one-click installer (no token: it only
+// answers Chrome extensions).
+const TRANSLATOR_URL = "http://127.0.0.1:8765";
+const INSTALL_PAGE = "http://101.35.6.63:8083/#install";
 const DEFAULT_SETTINGS = {
   displayMode: "bilingual",
   translationStyle: "plain",
@@ -11,7 +14,7 @@ const state = {
   supported: false,
   active: false,
   busy: false,
-  authorized: false,
+  connected: false,
   checking: true,
   commandPending: false,
   mode: "bilingual",
@@ -44,7 +47,7 @@ function renderAction() {
   $("toggle").disabled =
     state.commandPending ||
     !state.supported ||
-    (!state.active && !learn && (!state.authorized || state.checking));
+    (!state.active && !learn && (!state.connected || state.checking));
   $("toggle").dataset.active = String(state.active);
   $("toggleLabel").textContent = !state.supported
     ? "此页面暂不支持"
@@ -60,19 +63,19 @@ function renderAction() {
           ? "开始学习阅读"
           : state.checking
           ? "正在检查连接…"
-          : !state.authorized
-            ? "请先连接本地服务"
+          : !state.connected
+            ? "本地翻译服务未运行"
             : "翻译此页";
   $("toggleIcon").textContent = state.active ? "↶" : "↗";
   $("actionHint").textContent = learn
-    ? state.authorized
+    ? state.connected
       ? "只翻译你点开的段落；查词和复习完全离线。"
-      : "查词可离线使用；看段落译文需要连接本地翻译服务。"
+      : "查词可离线使用；看段落译文需要本地翻译服务。"
     : state.active
       ? "可随时关闭弹窗，翻译会在当前页面继续。"
       : "优先翻译可见段落，继续滚动即可接着翻译。";
   $("retryFailed").disabled =
-    state.busy || !state.authorized || state.commandPending;
+    state.busy || !state.connected || state.commandPending;
 }
 
 function renderPage(data) {
@@ -133,23 +136,6 @@ async function refreshPageState() {
   }
 }
 
-// Match the extension's existing loopback-only host permissions.
-function localServerUrl(value) {
-  const url = new URL(value.trim() || DEFAULT_SERVER_URL);
-  if (
-    url.protocol !== "http:" ||
-    !["127.0.0.1", "localhost"].includes(url.hostname) ||
-    url.username ||
-    url.password ||
-    url.search ||
-    url.hash ||
-    url.pathname !== "/"
-  ) {
-    throw new Error("请输入 http://127.0.0.1:端口 或 http://localhost:端口。");
-  }
-  return url.origin;
-}
-
 async function checkHealth() {
   const request = ++healthRequest;
   healthController?.abort();
@@ -161,59 +147,39 @@ async function checkHealth() {
   $("statusText").textContent = "连接中";
   renderAction();
   try {
-    const { serverUrl } = await chrome.storage.sync.get({
-      serverUrl: DEFAULT_SERVER_URL,
-    });
-    const { authToken } = await chrome.storage.local.get({ authToken: "" });
-    const url = localServerUrl(serverUrl);
-    const response = await fetch(`${url}/health`, {
-      headers: { "X-Auth-Token": authToken },
+    const response = await fetch(`${TRANSLATOR_URL}/health`, {
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     if (request !== healthRequest) return;
-    if (typeof data.authorized !== "boolean") {
+    // Token-era services answer authorized: false (or omit it) without a token.
+    if (data.authorized !== true) {
       const error = new Error("服务版本不兼容");
       error.name = "ServerVersionError";
       throw error;
     }
-    state.authorized = data.authorized === true;
-    $("status").dataset.state = state.authorized ? "ok" : "warn";
-    $("statusText").textContent = state.authorized ? "本地已连接" : "需要令牌";
-    $("status").title = state.authorized
-      ? `模型：${data.model || "本地模型"}${data.loaded ? "（已加载）" : "（首次翻译时加载）"}。点击重新检查。`
-      : "保存正确令牌后重试。";
-    $("connectionSummary").textContent = state.authorized
-      ? "已验证连接"
-      : "请填写令牌";
-    connectionNotice = state.authorized
-      ? ""
-      : authToken
-        ? "服务已连接，但令牌不正确。请重新复制启动日志中的令牌。"
-        : "服务已连接。在「连接与设置」粘贴令牌后即可开始。";
-    connectionKind = "warn";
-    if (!state.authorized) $("settings").open = true;
-    $("settingsFeedback").textContent = state.authorized
-      ? "连接已验证，设置已保存。首次翻译可能需要加载模型。"
-      : "请检查令牌，然后点击「保存并连接」。";
+    state.connected = true;
+    $("status").dataset.state = "ok";
+    $("statusText").textContent = "本地已连接";
+    $("status").title = `模型：${data.model || "本地模型"}${data.loaded ? "（已加载）" : "（首次翻译时加载）"}。点击重新检查。`;
+    connectionNotice = "";
+    $("setup").hidden = true;
   } catch (error) {
     if (request !== healthRequest) return;
-    state.authorized = false;
+    state.connected = false;
     $("status").dataset.state = "error";
     $("statusText").textContent =
-      error.name === "ServerVersionError" ? "服务需更新" : "服务未连接";
-    $("status").title = "点击重新连接本地服务";
-    $("connectionSummary").textContent = "需要连接";
+      error.name === "ServerVersionError" ? "服务需更新" : "服务未运行";
+    $("status").title = "点击重新检查本地翻译服务";
     connectionNotice =
       error.name === "ServerVersionError"
-        ? "当前服务仍是旧版接口。请从最新 localingo 项目目录重新启动服务，再复制新令牌连接。"
+        ? "本地翻译服务是旧版本。请在官网重新运行一键安装命令升级。"
         : error.name === "AbortError"
-          ? "连接超时（5 秒）。确认本地服务已启动，然后点击右上角重试。"
-          : "无法连接本地服务。请先运行下方启动命令，再保存连接设置。";
+          ? "连接超时（5 秒）。服务可能正在启动，稍后点击右上角重试。"
+          : "本地翻译服务未运行。第一次使用请在官网运行一键安装，之后会开机自动启动。";
     connectionKind = "error";
-    $("settings").open = true;
-    $("settingsFeedback").textContent = connectionNotice;
+    $("setup").hidden = false;
   } finally {
     clearTimeout(timeout);
     if (request === healthRequest) {
@@ -315,55 +281,14 @@ $("retryFailed").addEventListener("click", () =>
   pageCommand("web-translator:retry-failed"),
 );
 $("status").addEventListener("click", checkHealth);
-$("revealToken").addEventListener("click", () => {
-  const show = $("authToken").type === "password";
-  $("authToken").type = show ? "text" : "password";
-  $("revealToken").textContent = show ? "隐藏" : "显示";
-  $("revealToken").setAttribute("aria-label", show ? "隐藏令牌" : "显示令牌");
-  $("revealToken").setAttribute("aria-pressed", String(show));
-});
-$("connectionForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  $("serverUrl").removeAttribute("aria-invalid");
-  let serverUrl;
-  try {
-    serverUrl = localServerUrl($("serverUrl").value);
-  } catch (error) {
-    $("serverUrl").setAttribute("aria-invalid", "true");
-    $("settingsFeedback").textContent = error.message;
-    $("serverUrl").focus();
-    return;
-  }
-  $("saveConnection").disabled = true;
-  try {
-    await chrome.storage.sync.set({ serverUrl });
-    await chrome.storage.local.set({ authToken: $("authToken").value.trim() });
-    $("serverUrl").value = serverUrl;
-    await checkHealth();
-  } catch {
-    $("settingsFeedback").textContent = "设置未能保存，请重试。";
-  } finally {
-    $("saveConnection").disabled = false;
-  }
-});
-$("copyCommand").addEventListener("click", async () => {
-  try {
-    await navigator.clipboard.writeText("uv run web-translator");
-    $("copyCommand").textContent = "已复制";
-  } catch {
-    $("settingsFeedback").textContent = "复制未成功，可选中命令手动复制。";
-  }
+$("installLink").addEventListener("click", () => {
+  chrome.tabs.create({ url: INSTALL_PAGE });
+  window.close();
 });
 
 async function init() {
   try {
-    const prefs = await chrome.storage.sync.get({
-      serverUrl: DEFAULT_SERVER_URL,
-      ...DEFAULT_SETTINGS,
-    });
-    $("serverUrl").value = prefs.serverUrl || DEFAULT_SERVER_URL;
-    const { authToken } = await chrome.storage.local.get({ authToken: "" });
-    $("authToken").value = authToken;
+    const prefs = await chrome.storage.sync.get(DEFAULT_SETTINGS);
     renderDisplayMode(
       MODES.includes(prefs.displayMode) ? prefs.displayMode : "bilingual",
     );
@@ -441,13 +366,23 @@ async function init() {
 }
 // --- vocabulary & review ---------------------------------------------------------
 
+function dictLabel(dictionary, progress) {
+  if (dictionary) return "离线词典已安装";
+  if (progress?.state === "error") return "词典安装失败，稍后自动重试";
+  if (progress?.state === "importing" && progress.total)
+    return `词典安装中 ${Math.round((progress.done / progress.total) * 100)}%`;
+  return "词典下载中…";
+}
+
 async function refreshLearning() {
   try {
     const resp = await chrome.runtime.sendMessage({ type: "learning:summary" });
     if (!resp?.ok) return;
     $("reviewCount").textContent = String(resp.summary.today_total);
     $("openReview").setAttribute("aria-label", `今日复习 ${resp.summary.today_total} 条`);
-    $("dictState").textContent = resp.dictionary ? "离线词典已安装" : "尚未安装词典";
+    $("dictState").textContent = dictLabel(resp.dictionary, resp.dictInstall);
+    // The background installs the dictionary on its own; follow its progress.
+    if (!resp.dictionary && resp.dictInstall?.state !== "error") setTimeout(refreshLearning, 1500);
   } catch {
     /* service worker unavailable; keep placeholders */
   }

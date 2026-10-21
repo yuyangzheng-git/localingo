@@ -77,6 +77,11 @@ export class LearningStore {
         }
         db.createObjectStore("meta", { keyPath: "key" });
       });
+      // Another context deleted or upgraded the database (account switch): reopen lazily.
+      const db = this._db;
+      db.addEventListener("versionchange", () => {
+        if (this._db === db) this._db = null;
+      });
     }
     return this._db;
   }

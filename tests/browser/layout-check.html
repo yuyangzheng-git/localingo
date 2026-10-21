@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>layout check</title>
+    <style>
+      body { margin: 0; background: #888; }
+      iframe { border: 0; width: 375px; height: 900px; display: block; }
+    </style>
+  </head>
+  <body>
+    <!-- Renders the landing page in a true 375px viewport (headless Chrome clamps
+         --window-size to ~500px, so the iframe supplies the real narrow width). -->
+    <iframe id="f" src="/extension/index.html"></iframe>
+    <script>
+      const f = document.getElementById("f");
+      f.addEventListener("load", () => {
+        const d = f.contentDocument;
+        const vw = f.contentWindow.innerWidth;
+        const offenders = [];
+        d.querySelectorAll("body *").forEach((el) => {
+          const r = el.getBoundingClientRect();
+          if (r.right > vw + 1 && r.width > 0) {
+            offenders.push(el.tagName + "." + (el.className || "-") + " right=" + Math.round(r.right));
+          }
+        });
+        document.title =
+          "vw=" + vw +
+          " scrollW=" + d.documentElement.scrollWidth +
+          " | " + (offenders.length ? offenders.slice(0, 8).join(", ") : "no overflow");
+      });
+    </script>
+  </body>
+</html>

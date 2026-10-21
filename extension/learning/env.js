@@ -1,13 +1,14 @@
 // Platform services for the learning pages (side panel, learning center). The same
 // pages run as extension pages (local data, offline dictionary, background sync) or
 // as the hosted web app served by the LocaLingo server (synced copy, server-side
-// dictionary, browser speech).
+// dictionary, browser speech). Both sign in to the same account server; lookup works
+// without an account, the learning center needs one.
 
 import { RemoteDictionary } from "./dict.js";
 import { IdbDictionary } from "./dict-idb.js";
 import { DEFAULT_PREFS, normalizePrefs } from "./prefs.js";
 import { LearningStore } from "./store.js";
-import { ApiClient, login, syncOnce } from "./sync.js";
+import { ACCOUNT_SERVER, ApiClient, login, syncOnce } from "./sync.js";
 
 export const isExtension =
   typeof chrome !== "undefined" &&
@@ -18,20 +19,6 @@ export function createEnv() {
   return isExtension ? extensionEnv() : webEnv();
 }
 
-/** Validate a sync server address: https, or http only for localhost development. */
-export function syncServerOrigin(value) {
-  let url;
-  try {
-    url = new URL(String(value || "").trim());
-  } catch {
-    throw new Error("请输入完整地址，例如 https://learn.example.com");
-  }
-  const local = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
-  if (url.protocol !== "https:" && !(local && url.protocol === "http:")) throw new Error("同步服务器必须使用 https://（本机调试可用 http://localhost）");
-  if (url.username || url.password || url.search || url.hash) throw new Error("地址中不能包含账号、参数或 #");
-  return url.origin;
-}
-
 function extensionEnv() {
   const store = new LearningStore();
   const send = async (message) => {
@@ -39,7 +26,7 @@ function extensionEnv() {
     if (!resp) throw new Error("扩展后台没有响应");
     return resp;
   };
-  return {
+  const env = {
     kind: "extension",
     store,
     dictionary: new IdbDictionary(),
@@ -64,34 +51,51 @@ function extensionEnv() {
     openCenter(hash = "") {
       chrome.tabs.create({ url: chrome.runtime.getURL("learn.html") + hash });
     },
+    server: ACCOUNT_SERVER,
     sync: {
       async status() {
-        const s = await chrome.storage.local.get({ syncServer: "", syncToken: "", syncUser: "", syncLastAt: 0, syncLastError: "" });
-        return { configured: !!(s.syncServer && s.syncToken), server: s.syncServer, user: s.syncUser, lastAt: s.syncLastAt, lastError: s.syncLastError, needsLogin: !!s.syncServer && !s.syncToken };
+        const s = await chrome.storage.local.get({ syncToken: "", syncUser: "", syncLastAt: 0, syncLastError: "" });
+        return { configured: !!s.syncToken, server: ACCOUNT_SERVER, user: s.syncUser, lastAt: s.syncLastAt, lastError: s.syncLastError, needsLogin: !s.syncToken };
       },
-      /** Must be called from a click handler: asks Chrome for access to the server first. */
-      async signIn(server, username, password) {
-        const origin = syncServerOrigin(server);
-        const granted = await chrome.permissions.request({ origins: [`${origin}/*`] });
-        if (!granted) throw new Error("需要允许访问该服务器才能同步");
-        const { token, user } = await login(origin, username, password, { deviceLabel: "Chrome 扩展" });
-        await chrome.storage.local.set({ syncServer: origin, syncToken: token, syncUser: user.username, syncLastError: "" });
-        return send({ type: "learning:sync-now" });
+      async signIn(username, password) {
+        const { token, user } = await login(ACCOUNT_SERVER, username, password, { deviceLabel: "Chrome 扩展" });
+        return adopt(token, user.username);
+      },
+      async signUp(username, password) {
+        const data = await new ApiClient({ baseUrl: ACCOUNT_SERVER }).post("/api/auth/signup", { username, password, device_label: "Chrome 扩展" });
+        return adopt(data.token, data.user.username);
       },
       async syncNow() {
         return send({ type: "learning:sync-now" });
       },
-      async signOut() {
-        const s = await chrome.storage.local.get({ syncServer: "", syncToken: "" });
-        if (s.syncServer && s.syncToken) {
-          await new ApiClient({ baseUrl: s.syncServer, token: s.syncToken }).post("/api/auth/logout").catch(() => {});
+      async signOut({ force = false } = {}) {
+        await send({ type: "learning:sync-now" }).catch(() => {});
+        const unsynced = await store.dirtyRecords(1);
+        if (!force && Object.keys(unsynced).length) {
+          const err = new Error("还有更改没有同步到服务器。请联网同步后再退出，或选择仍然退出（这些更改留在本机，登录其他账号时会被清除）。");
+          err.code = "unsynced";
+          throw err;
         }
-        // Local data stays: the extension copy is authoritative.
+        const { syncToken } = await chrome.storage.local.get({ syncToken: "" });
+        if (syncToken) await new ApiClient({ baseUrl: ACCOUNT_SERVER, token: syncToken }).post("/api/auth/logout").catch(() => {});
+        // Local data stays for this account's next sign-in; another account clears it.
         await chrome.storage.local.set({ syncToken: "", syncUser: "", syncLastError: "" });
-        await chrome.storage.local.remove("syncServer");
       },
     },
   };
+
+  async function adopt(token, username) {
+    // Never mix two accounts' data: the local copy belongs to the last account
+    // signed in here. Data saved before the first sign-in goes to that account.
+    const { syncOwner } = await chrome.storage.local.get({ syncOwner: "" });
+    if (syncOwner && syncOwner !== username) {
+      await store.destroy();
+      await chrome.storage.local.set({ syncLastAt: 0 });
+    }
+    await chrome.storage.local.set({ syncToken: token, syncUser: username, syncOwner: username, syncLastError: "" });
+    return send({ type: "learning:sync-now" });
+  }
+  return env;
 }
 
 function webEnv() {
@@ -129,6 +133,7 @@ function webEnv() {
   }
   const env = {
     kind: "web",
+    server: "",
     store,
     api,
     dictionary: new RemoteDictionary(api),
@@ -184,7 +189,7 @@ function webEnv() {
       async status() {
         return { configured: !!api.token, server: location.origin, user: env.user, lastAt, lastError, needsLogin: !api.token };
       },
-      async signIn(_server, username, password) {
+      async signIn(username, password) {
         const { token, user } = await login("", username, password, { deviceLabel: "网页" });
         return adopt(token, user.username);
       },

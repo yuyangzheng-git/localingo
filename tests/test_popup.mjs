@@ -13,7 +13,6 @@ const source = readFileSync(
 async function harness({
   supported = true,
   online = true,
-  authorized = true,
   legacy = false,
   active = false,
 } = {}) {
@@ -58,7 +57,7 @@ async function harness({
   }
   const context = vm.createContext({
     document: { getElementById: element },
-    window: { addEventListener() {} },
+    window: { addEventListener() {}, close() {} },
     URL,
     AbortController,
     setTimeout,
@@ -73,7 +72,8 @@ async function harness({
       return {
         ok: true,
         async json() {
-          return legacy ? { loaded: true } : { authorized, loaded: true };
+          // Token-era services answer authorized: false without a token.
+          return legacy ? { authorized: false, loaded: true } : { authorized: true, loaded: true };
         },
       };
     },
@@ -89,7 +89,7 @@ async function harness({
         },
         local: {
           async get() {
-            return { authToken: "test-only" };
+            return {};
           },
           async set(values) {
             saved.push(values);
@@ -97,6 +97,9 @@ async function harness({
         },
       },
       tabs: {
+        async create(opts) {
+          saved.push({ opened: opts.url });
+        },
         async query() {
           return [
             {
@@ -152,30 +155,23 @@ test("unsupported pages remain disabled even when the server is connected", asyn
   assert.match(element("notice").textContent, /普通网页/);
 });
 
-test("legacy health responses are distinguished from invalid tokens", async () => {
+test("token-era services are told to update; no token is ever asked for", async () => {
   const old = await harness({ legacy: true });
   assert.equal(old.element("statusText").textContent, "服务需更新");
-  assert.match(old.element("notice").textContent, /旧版接口/);
-  const unauthorized = await harness({ authorized: false });
-  assert.equal(unauthorized.element("statusText").textContent, "需要令牌");
+  assert.match(old.element("notice").textContent, /旧版本/);
+  assert.equal(old.element("setup").hidden, false);
+  const ok = await harness();
+  assert.equal(ok.element("statusText").textContent, "本地已连接");
+  assert.equal(ok.element("setup").hidden, true);
 });
 
-test("only loopback HTTP servers are accepted by the settings form", async () => {
-  const { context } = await harness();
-  assert.equal(
-    context.localServerUrl("http://localhost:8765/"),
-    "http://localhost:8765",
-  );
-  assert.equal(context.localServerUrl(""), "http://127.0.0.1:8765");
-  for (const value of [
-    "https://cloud.example",
-    "http://192.168.1.5:8765",
-    "http://localhost.evil.test",
-    "http://user:pass@localhost:8765",
-    "http://localhost:8765/path",
-  ]) {
-    assert.throws(() => context.localServerUrl(value));
-  }
+test("an offline service points to the one-click installer", async () => {
+  const { element, saved } = await harness({ online: false });
+  assert.equal(element("statusText").textContent, "服务未运行");
+  assert.match(element("notice").textContent, /一键安装/);
+  assert.equal(element("setup").hidden, false);
+  element("installLink").listeners.click();
+  assert.deepEqual(saved.at(-1), { opened: "http://101.35.6.63:8083/#install" });
 });
 
 test("translation-only mode disables the entire style fieldset for keyboard users", async () => {
@@ -184,14 +180,6 @@ test("translation-only mode disables the entire style fieldset for keyboard user
   assert.equal(element("styleGroup").disabled, true);
   context.renderDisplayMode("bilingual");
   assert.equal(element("styleGroup").disabled, false);
-});
-
-test("invalid endpoint edits are not saved or sent", async () => {
-  const { element, saved } = await harness();
-  element("serverUrl").value = "https://not-local.example";
-  await element("connectionForm").listeners.submit({ preventDefault() {} });
-  assert.equal(saved.length, 0);
-  assert.equal(element("serverUrl").attributes["aria-invalid"], "true");
 });
 
 test("late connection responses cannot overwrite the newest health result", async () => {

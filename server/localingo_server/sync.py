@@ -65,15 +65,21 @@ def push(db: Database, user_id: int, device_id: str, changes: dict) -> dict:
             ).fetchone()
             if cur and not _newer(updated, rec_device, cur["updated_at"], cur["device_id"]):
                 continue
-            seq = conn.execute(
-                "UPDATE user_seq SET value = value + 1 WHERE user_id = ? RETURNING value", (user_id,)
-            ).fetchone()["value"]
-            conn.execute(
-                "INSERT INTO records (user_id, store, id, seq, updated_at, device_id, data) VALUES (?, ?, ?, ?, ?, ?, ?) "
-                "ON CONFLICT (user_id, store, id) DO UPDATE SET seq = excluded.seq, updated_at = excluded.updated_at, "
-                "device_id = excluded.device_id, data = excluded.data",
-                (user_id, store, rid, seq, updated, rec_device, data),
-            )
+            # Bump the change counter and read it back: portable across SQLite and MySQL,
+            # and the surrounding transaction keeps the two steps atomic.
+            conn.execute("UPDATE user_seq SET value = value + 1 WHERE user_id = ?", (user_id,))
+            seq = conn.execute("SELECT value FROM user_seq WHERE user_id = ?", (user_id,)).fetchone()["value"]
+            if cur:
+                conn.execute(
+                    "UPDATE records SET seq = ?, updated_at = ?, device_id = ?, data = ? "
+                    "WHERE user_id = ? AND store = ? AND id = ?",
+                    (seq, updated, rec_device, data, user_id, store, rid),
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO records (user_id, store, id, seq, updated_at, device_id, data) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (user_id, store, rid, seq, updated, rec_device, data),
+                )
             accepted += 1
         cursor = conn.execute("SELECT value FROM user_seq WHERE user_id = ?", (user_id,)).fetchone()["value"]
     return {"accepted": accepted, "received": total, "cursor": cursor}

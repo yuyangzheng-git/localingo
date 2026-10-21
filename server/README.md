@@ -2,8 +2,8 @@
 
 Syncs your vocabulary book, saved sentences and review history between the Chrome
 extension and a hosted learning web app, and serves the offline dictionary package.
-It is a small FastAPI + SQLite service meant for one person or a few accounts on your
-own VPS.
+It is a small FastAPI service meant for one person or a few accounts on your
+own VPS. Storage is SQLite by default, or MySQL when `LOCALINGO_MYSQL_URL` is set.
 
 What it stores: the records you save (words/phrases with the sense you chose, the
 sentence you saw them in and its source link, notes, tags, review events). It never
@@ -24,8 +24,8 @@ The first start creates that account (remove the two variables afterwards). The 
 build downloads ECDICT at a pinned commit, verifies its SHA-256 and builds the `base`
 (≈8 MB) and `full` (≈25 MB) dictionary packages.
 
-The container listens on `127.0.0.1:8080`. Put HTTPS in front of it — the extension
-only syncs over `https://` (except `localhost`). With Caddy:
+The container listens on `127.0.0.1:8080`. Put HTTPS in front of it so passwords and
+tokens are not sent in clear text. With Caddy:
 
 ```
 learn.example.com {
@@ -34,11 +34,11 @@ learn.example.com {
 ```
 
 Then open `https://learn.example.com`. The root is a project-introduction landing
-page — click 「进入我的个人空间」 to reach the learning center. You can use it
-directly in **local mode** (data saved in the browser, dictionary lookups work)
-without signing in. To sync across devices, create an account and sign in; then
-in the extension's learning center (设置 → 同步) enter the same address and
-account.
+page — click 「进入我的个人空间」 to reach the learning center. Lookup works without
+signing in; the vocabulary book, sentences and review need an account. The Chrome
+extension signs in to the server set as `ACCOUNT_SERVER` in
+`extension/learning/sync.js` (the extension needs a host permission for it in
+`manifest.json`), so a self-hosted server means changing both.
 
 ### Accounts
 
@@ -47,13 +47,15 @@ docker compose -f server/compose.yaml exec localingo localingo-server create-use
 docker compose -f server/compose.yaml exec localingo localingo-server set-password alice
 ```
 
-Self-service sign-up is off; set `LOCALINGO_ALLOW_SIGNUP=true` to allow it.
+Self-service sign-up is off; set `LOCALINGO_ALLOW_SIGNUP=true` to allow it (the
+learning center then shows 「注册新账号」).
 
 ### Settings
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `LOCALINGO_DATA` | `/data` | SQLite databases (accounts + records, dictionary index) |
+| `LOCALINGO_MYSQL_URL` | — | e.g. `mysql://user:pass@host:3306/localingo`; when set, accounts and sync records live in MySQL instead of SQLite (the dictionary index stays a local SQLite file) |
 | `LOCALINGO_BIND` | `127.0.0.1` | Host address the container port is published on (`0.0.0.0` to expose directly) |
 | `LOCALINGO_PORT` | `8080` | Host port the web app is published on |
 | `LOCALINGO_DICT_VARIANT` | `base` | Dictionary package used by the web app's lookups (`base` or `full`) |
@@ -80,7 +82,7 @@ It serves the web app straight from `../extension` and dictionary packages from
 
 All endpoints except `/api/health`, `/api/auth/login`, `/api/auth/signup` and the
 `/api/dict/*` endpoints need `Authorization: Bearer <token>`. Dictionary lookups
-are public so the learning center works in local mode without signing in.
+are public so lookup and dictionary installs work without signing in.
 
 | Method | Path | |
 | --- | --- | --- |

@@ -1,12 +1,11 @@
 {
   "manifest_version": 3,
   "name": "LocaLingo",
-  "version": "0.4.0",
+  "version": "0.5.2",
   "description": "Read English, look up words offline, keep them with their sentences, and review — translation runs on your Mac.",
   "minimum_chrome_version": "116",
   "permissions": ["activeTab", "contextMenus", "storage", "scripting", "sidePanel", "tts", "alarms", "unlimitedStorage"],
-  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
-  "optional_host_permissions": ["https://*/*"],
+  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*", "http://101.35.6.63:8083/*"],
   "background": {
     "service_worker": "background.js",
     "type": "module"
@@ -44,12 +43,14 @@
     "default_title": "LocaLingo",
     "default_icon": {
       "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
     }
   },
   "icons": {
     "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   }

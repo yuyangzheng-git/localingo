@@ -97,7 +97,25 @@ elements, translates each one as a whole from its plain text, and appends the
 Chinese below the untouched original. Navigation, controls, code, and
 hidden/accessibility text are skipped.
 
-## Setup
+## Install (one command)
+
+On an Apple Silicon Mac with Chrome:
+
+```bash
+curl -fsSL http://101.35.6.63:8083/install.sh | bash
+```
+
+It installs the translation service into `~/Library/Application Support/LocaLingo`
+(a LaunchAgent starts it at login), downloads the model once (via `hf-mirror.com` when
+Hugging Face is unreachable), and puts the extension in `~/LocaLingo/chrome-extension`.
+Load that folder once in `chrome://extensions` (Developer mode → Load unpacked). Re-run
+the command to update; add `-s -- --uninstall` after `bash` to remove it. Logs:
+`~/Library/Logs/LocaLingo/translator.log`.
+
+The downloads are built with `scripts/build_release.sh` into `data/release/`, which the
+LocaLingo server serves at `/install.sh` and `/download/…` (`LOCALINGO_RELEASE_DIR`).
+
+## Setup (development)
 
 Requires Python 3.12+ and an Apple Silicon Mac, managed with [uv](https://docs.astral.sh/uv/).
 
@@ -120,9 +138,8 @@ uv run mlx_lm.convert --hf-path ZachacyZ/qwen3-1.7b-web-v3a-merged -q --q-bits 4
 uv run web-translator
 ```
 
-Starts the server on `http://127.0.0.1:8765` and prints an **auth token**. On first
-run the token is generated randomly and saved to `~/.config/localingo/token`, so it
-stays the same across restarts. The model loads lazily on the first request (the
+Starts the server on `http://127.0.0.1:8765`. There is no token: it only translates
+requests from Chrome extensions (see below). The model loads lazily on the first request (the
 first translation is slow; later ones are fast). Keep the server running while you browse.
 
 ## Load the extension
@@ -130,7 +147,6 @@ first translation is slow; later ones are fast). Keep the server running while y
 1. Open `chrome://extensions`.
 2. Enable **Developer mode** (top-right).
 3. Click **Load unpacked** and select the `extension/` directory.
-4. Click the extension icon and paste the token printed by the server into **Auth token**.
 
 ## Configuration
 
@@ -139,19 +155,19 @@ first translation is slow; later ones are fast). Keep the server running while y
 | `WEB_TRANSLATOR_MODEL` | `~/models/qwen3-1.7b-web-v3a-mlx`, else `ZachacyZ/qwen3-1.7b-web-v3a-merged` | Model id or local path to load (a custom Qwen3-1.7B translation fine-tune) |
 | `WEB_TRANSLATOR_ADAPTER` | *(none)* | Local path to a LoRA adapter dir (`adapter_config.json` + safetensors) to load on top of the model |
 | `WEB_TRANSLATOR_PORT` | `8765` | Server port |
-| `WEB_TRANSLATOR_TOKEN` | *(random, from the token file)* | Override the shared auth token (paste the same value into the popup) |
-| `WEB_TRANSLATOR_TOKEN_FILE` | `~/.config/localingo/token` | Where the generated token is stored |
 
-The server binds to `127.0.0.1` only. CORS only allows `chrome-extension://` origins, and
-every `/translate` call needs the per-machine token, so other websites open in your
-browser can't drive your local model.
+The server binds to `127.0.0.1` only. `/translate` requires a `chrome-extension://`
+`Origin` header (browsers always send it on a POST and web pages can't forge it) and a
+loopback `Host` (blocks DNS rebinding), so other websites open in your browser can't
+drive your local model. Programs running on your Mac can — as they could read a token
+file.
 
 ## API
 
-- `GET /health` — `{"status": "ok", "model": "...", "loaded": false, "authorized": false}`
-  (`authorized` is true when a valid `X-Auth-Token` header is sent)
+- `GET /health` — `{"status": "ok", "model": "...", "loaded": false, "authorized": true}`
+  (`authorized` is always true; token-era servers answer false and the popup asks to update)
 - `POST /translate` — body `{"texts": ["...", "..."]}` → `{"translations": ["...", "..."]}`
-  (requires `X-Auth-Token` header; at most 64 texts of up to 4000 characters each)
+  (403 unless sent by a Chrome extension; at most 64 texts of up to 4000 characters each)
 
 ## Model
 
@@ -204,16 +220,22 @@ A Qwen LoRA adapter can alternatively be loaded unmerged via
      --license data/upstream/ECDICT-LICENSE.txt --commit bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b
    ```
 
-   Then in the extension: 学习中心 → 设置 → 离线词典 → 从文件导入 →
+   The extension installs the base package by itself from the LocaLingo server right
+   after installation (no account needed; progress in the popup and on 学习中心 → 查词).
+   To install another package: 学习中心 → 查词 → 离线词典, or 从文件导入 →
    `data/dist/localingo-dict-ecdict-base-bc015ed.jsonl.gz` (≈8 MB, 149k entries, a few
-   seconds). With a sync server you can install it from the server instead.
-2. **Sync (optional).** Deploy [server/](server/README.md) behind HTTPS, then 设置 → 同步.
+   seconds).
+2. **Account.** Translation and lookup run locally without an account. The vocabulary
+   book, saved sentences and review need a LocaLingo account on the server at
+   `http://101.35.6.63:8083` (set in `extension/learning/sync.js` as `ACCOUNT_SERVER`):
+   open the learning center and sign in or register. The extension and the web app
+   share the same account data.
 3. **Shortcut (optional).** `chrome://extensions/shortcuts` → *Look up the selected word*.
 
 New permissions in 0.4: `sidePanel` (learning side panel), `tts` (pronunciation with
-local voices), `alarms` (periodic sync), `unlimitedStorage` (offline dictionary), and
-optional access to your own sync server's `https://` origin, requested only when you
-sign in.
+local voices), `alarms` (periodic sync), `unlimitedStorage` (offline dictionary). 0.5
+adds host access to the LocaLingo account server (`http://101.35.6.63:8083/*`) and
+drops the optional access to arbitrary `https://` sync servers.
 
 ## Development
 
@@ -233,7 +255,11 @@ Open `http://127.0.0.1:8791/tests/browser/preview.html`. For the learning featur
 `http://127.0.0.1:8791/tests/browser/learn-harness.html` runs the real background
 script and content scripts against a mocked `chrome.*` (it imports the dictionary
 from `data/dist/`); `extension/learn.html?harness` and `extension/sidepanel.html?harness`
-open the learning pages the same way. See
+open the learning pages the same way (signed in to a fake account server; add
+`&signedout` to start signed out). `tests/browser/login-harness.html` checks the
+sign-in gate, `tests/browser/dict-harness.html` the automatic dictionary install (fresh
+profile), and `tests/browser/chat-harness.html` checks a streaming AI chat page
+(React-style node patching, mid-answer pauses, composer and dialogs). See
 [the UI and interaction review](docs/UX_REVIEW.md) for implemented improvements,
 known limitations, and the next priorities. Reload the unpacked extension after
 updating it. A running older backend must be restarted from this project directory.

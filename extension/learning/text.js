@@ -163,3 +163,28 @@ export function highlightTarget(sentence, target) {
   const i = s.toLowerCase().indexOf(t.toLowerCase());
   return i < 0 ? s : `${s.slice(0, i)}<b>${s.slice(i, i + t.length)}</b>${s.slice(i + t.length)}`;
 }
+
+const fnv = (str, seed) => {
+  let h = seed >>> 0;
+  for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 0x01000193) >>> 0;
+  return h.toString(16).padStart(8, "0");
+};
+
+/** A 64-bit hex fingerprint of `str` (not cryptographic; for idempotency keys). */
+export function shortHash(str) {
+  return fnv(str, 0x811c9dc5) + fnv(str, 0x9747b28c);
+}
+
+/** Keep an idempotency key within the store's 100 characters (stable for the same input). */
+export function fitKey(key) {
+  return key.length <= 100 ? key : `h:${shortHash(key)}:${key.length}`;
+}
+
+/**
+ * Idempotency key for saving `text` from the page at `url`: the same page and
+ * sentence always give the same key (saving twice is a no-op), and it stays far
+ * below the store's 100-character limit however long the URL or sentence is.
+ */
+export function sentenceKey(url, text) {
+  return `sentence:${shortHash(`${url}\n${text}`)}:${text.length}`;
+}

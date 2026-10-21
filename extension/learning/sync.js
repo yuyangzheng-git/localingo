@@ -7,6 +7,9 @@
 // and card state is re-derived from events, so concurrent reviews on two devices
 // never conflict.
 
+/** The LocaLingo account server: sign-up, sign-in, sync and dictionary packages. */
+export const ACCOUNT_SERVER = "http://101.35.6.63:8083";
+
 export class SyncError extends Error {
   constructor(message, status = 0) {
     super(message);
@@ -43,7 +46,8 @@ export class ApiClient {
     } finally {
       clearTimeout(timer);
     }
-    if (resp.status === 401) throw new SyncError("登录已失效，请重新登录", 401);
+    // Without a token a 401 is a failed sign-in: show the server's reason instead.
+    if (resp.status === 401 && this.token) throw new SyncError("登录已失效，请重新登录", 401);
     if (!resp.ok) {
       let detail = "";
       try {

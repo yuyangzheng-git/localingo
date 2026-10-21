@@ -19,8 +19,13 @@ from .dictionary import Dictionary
 log = logging.getLogger("localingo")
 
 # Files of the extension that make up the hosted web app (nothing else is served).
-WEB_FILES = {"index.html", "index.css", "learn.html"}
+WEB_FILES = {"index.html", "index.css", "learn.html", "landing.js", "privacy.html"}
 WEB_DIRS = {"learn", "learning", "icons"}
+# One-click installer downloads, served from settings.release_dir.
+RELEASE_FILES = {
+    "localingo-extension.zip": "application/zip",
+    "localingo-translator.tar.gz": "application/gzip",
+}
 CSP = (
     "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
     "connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
@@ -48,7 +53,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        db = Database(settings.db_path)
+        db = Database(settings.db_path, mysql_url=settings.mysql_url)
         dictionary = Dictionary(settings.dict_db_path, settings.dict_dir, settings.dict_variant)
         try:
             active = dictionary.ensure_loaded()
@@ -199,6 +204,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def index() -> FileResponse:
         # Landing page (project introduction) with the entry into the learning center.
         return FileResponse(web_root / "index.html", media_type="text/html; charset=utf-8")
+
+    # --- one-click install ---------------------------------------------------------------
+
+    release_dir = settings.release_dir.resolve()
+
+    @app.get("/install.sh")
+    def install_script() -> Response:
+        path = release_dir / "install.sh"
+        if not path.is_file():
+            return JSONResponse({"detail": "Not found"}, status_code=404)
+        return FileResponse(path, media_type="text/plain; charset=utf-8", headers={"Cache-Control": "no-cache"})
+
+    @app.get("/download/{filename}")
+    def download(filename: str) -> Response:
+        path = release_dir / filename
+        if filename not in RELEASE_FILES or not path.is_file():
+            return JSONResponse({"detail": "Not found"}, status_code=404)
+        return FileResponse(path, media_type=RELEASE_FILES[filename], filename=filename, headers={"Cache-Control": "no-cache"})
 
     @app.get("/{path:path}")
     def static(path: str):

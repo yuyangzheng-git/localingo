@@ -1,14 +1,16 @@
 // Service worker (ES module): selection translation via the local MLX server, and the
 // learning features — offline dictionary lookup, vocabulary book, speech, side panel
-// and sync — which work without the translation server.
+// and sync — which work without the translation server. Translation and lookup need
+// no account; saving to the vocabulary book needs a signed-in LocaLingo account.
 
 import { lookup } from "./learning/dict.js";
-import { IdbDictionary } from "./learning/dict-idb.js";
+import { IdbDictionary, importPackage } from "./learning/dict-idb.js";
 import { DEFAULT_PREFS, normalizePrefs } from "./learning/prefs.js";
+import { fitKey } from "./learning/text.js";
 import { LearningStore, ValidationError } from "./learning/store.js";
-import { ApiClient, syncOnce } from "./learning/sync.js";
+import { ACCOUNT_SERVER, ApiClient, syncOnce } from "./learning/sync.js";
 
-const DEFAULT_SERVER_URL = "http://127.0.0.1:8765";
+const TRANSLATOR_URL = "http://127.0.0.1:8765";
 const MAX_MESSAGE_CHARS = 40_000;
 const SYNC_ALARM = "localingo-sync";
 const SYNC_DEBOUNCE_MS = 5000;
@@ -18,33 +20,18 @@ const store = new LearningStore();
 
 // --- translation (local MLX server) ---------------------------------------------
 
-async function getServerUrl() {
-  const { serverUrl } = await chrome.storage.sync.get({ serverUrl: DEFAULT_SERVER_URL });
-  return (serverUrl || DEFAULT_SERVER_URL).replace(/\/+$/, "");
-}
-
-// The token is printed by `uv run web-translator` and pasted into the popup.
-// Kept in storage.local (not sync) so it stays on this machine.
-async function getAuthToken() {
-  const { authToken } = await chrome.storage.local.get({ authToken: "" });
-  return authToken;
-}
-
+// The translation service installed by install.sh (a LaunchAgent on this Mac). It only
+// accepts requests from Chrome extensions, so there is no token to configure.
 async function translateTexts(texts) {
-  const token = await getAuthToken();
-  if (!token) {
-    throw new Error("no auth token — paste the server's token into the extension popup");
-  }
-  const resp = await fetch(`${await getServerUrl()}/translate`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Auth-Token": token,
-    },
-    body: JSON.stringify({ texts }),
-  });
-  if (resp.status === 401) {
-    throw new Error("auth token rejected — copy the current token from the server into the popup");
+  let resp;
+  try {
+    resp = await fetch(`${TRANSLATOR_URL}/translate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ texts }),
+    });
+  } catch {
+    throw new Error("本地翻译服务未运行 — 请在官网运行一键安装，或重新启动电脑后再试");
   }
   if (!resp.ok) {
     throw new Error(`server error ${resp.status}: ${await resp.text()}`);
@@ -55,9 +42,7 @@ async function translateTexts(texts) {
 
 async function checkHealth() {
   try {
-    const resp = await fetch(`${await getServerUrl()}/health`, {
-      headers: { "X-Auth-Token": await getAuthToken() },
-    });
+    const resp = await fetch(`${TRANSLATOR_URL}/health`);
     return resp.ok ? await resp.json() : null;
   } catch {
     return null;
@@ -71,9 +56,57 @@ async function getPrefs() {
   return normalizePrefs(learnPrefs);
 }
 
+// --- offline dictionary: installed automatically ----------------------------------
+
+// The base package (~8 MB, 149k entries) is downloaded from the LocaLingo server on
+// install and whenever it is missing; the full one stays a choice in the learning
+// center. Progress goes to storage.local "dictInstall" ({state, done, total, error})
+// for the popup and learning center — and each write keeps the worker alive.
+let dictInstall = null;
+
+function ensureDictionary() {
+  if (dictInstall) return dictInstall;
+  dictInstall = (async () => {
+    if (await dictionary.info()) return { ok: true, installed: false };
+    const report = (state) => chrome.storage.local.set({ dictInstall: { at: Date.now(), ...state } });
+    try {
+      await report({ state: "downloading" });
+      const api = new ApiClient({ baseUrl: ACCOUNT_SERVER, timeoutMs: 120000 });
+      const { packages = [] } = await api.get("/api/dict/info");
+      const pkg = packages.find((p) => p.variant === "base") || packages[0];
+      if (!pkg) throw new Error("服务器上没有词典包");
+      const resp = await fetch(`${ACCOUNT_SERVER}/api/dict/packages/${encodeURIComponent(pkg.file)}`, { credentials: "omit" });
+      if (!resp.ok) throw new Error(`下载词典失败（${resp.status}）`);
+      const buffer = await resp.arrayBuffer();
+      let last = 0;
+      await importPackage(buffer, {
+        expectedSha256: pkg.sha256,
+        onProgress: ({ phase, done, total }) => {
+          if (Date.now() - last < 1000) return;
+          last = Date.now();
+          report({ state: phase === "import" ? "importing" : phase, done, total });
+        },
+      });
+      await report({ state: "done" });
+      return { ok: true, installed: true };
+    } catch (err) {
+      await report({ state: "error", error: err?.message || String(err) });
+      return { ok: false, error: err?.message || String(err) };
+    } finally {
+      dictInstall = null;
+    }
+  })();
+  return dictInstall;
+}
+
 async function handleLookup({ query }) {
   if (typeof query !== "string" || !query.trim()) throw new ValidationError("没有要查询的内容");
   const result = await lookup(query, dictionary);
+  if (result.status === "no-dictionary") {
+    // First lookups right after installing: tell the card it is on its way.
+    ensureDictionary();
+    result.installing = true;
+  }
   const keys = [...new Set(result.results.map((r) => r.entry.k))];
   const saved = keys.length ? await store.itemsForLexemes(keys) : [];
   const info = await dictionary.info();
@@ -133,21 +166,16 @@ let syncTimer = null;
 let syncRunning = null;
 
 async function syncSettings() {
-  return chrome.storage.local.get({ syncServer: "", syncToken: "", syncUser: "" });
+  return chrome.storage.local.get({ syncToken: "", syncUser: "" });
 }
 
 async function syncNow() {
   if (syncRunning) return syncRunning;
   syncRunning = (async () => {
-    const { syncServer, syncToken } = await syncSettings();
-    if (!syncServer || !syncToken) return { ok: false, skipped: true };
-    const origin = new URL(syncServer).origin + "/*";
-    if (!(await chrome.permissions.contains({ origins: [origin] }))) {
-      await chrome.storage.local.set({ syncLastError: "需要重新授权访问同步服务器" });
-      return { ok: false, error: "需要重新授权访问同步服务器" };
-    }
+    const { syncToken } = await syncSettings();
+    if (!syncToken) return { ok: false, skipped: true };
     try {
-      const result = await syncOnce(store, new ApiClient({ baseUrl: syncServer, token: syncToken }));
+      const result = await syncOnce(store, new ApiClient({ baseUrl: ACCOUNT_SERVER, token: syncToken }));
       await chrome.storage.local.set({ syncLastAt: Date.now(), syncLastError: "" });
       return { ok: true, ...result };
     } catch (err) {
@@ -179,17 +207,25 @@ chrome.runtime.onInstalled.addListener(async ({ reason }) => {
     chrome.contextMenus.create({ id: "translate-selection", title: "翻译成中文", contexts: ["selection"] });
     chrome.contextMenus.create({ id: "lookup-selection", title: "在 LocaLingo 中查词", contexts: ["selection"] });
   });
+  if (reason === "update") {
+    // 0.5 moved accounts to the fixed LocaLingo server: drop sign-ins to other servers.
+    const { syncServer } = await chrome.storage.local.get({ syncServer: "" });
+    if (syncServer && syncServer !== ACCOUNT_SERVER) await chrome.storage.local.set({ syncToken: "", syncUser: "" });
+    await chrome.storage.local.remove("syncServer");
+  }
   if (reason === "install") {
     // New users start in 学习阅读; upgrades keep their existing reading mode.
     const { displayMode } = await chrome.storage.sync.get("displayMode");
     if (!displayMode) await chrome.storage.sync.set({ displayMode: "learn" });
   }
   chrome.alarms?.create(SYNC_ALARM, { periodInMinutes: 30 });
+  ensureDictionary();
   chrome.sidePanel?.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => {});
 });
 
 chrome.runtime.onStartup.addListener(() => {
   chrome.alarms?.create(SYNC_ALARM, { periodInMinutes: 30 });
+  ensureDictionary(); // an earlier attempt may have failed offline
   syncNow().catch(() => {});
 });
 
@@ -224,16 +260,30 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
 // --- messages -----------------------------------------------------------------------
 
+// Pages opened before an update still run the previous content script, whose keys
+// could exceed the store's limit: shorten them here instead of failing the save.
+function withFittedKey(payload) {
+  const p = payload && typeof payload === "object" ? payload : {};
+  return typeof p.idempotency_key === "string" ? { ...p, idempotency_key: fitKey(p.idempotency_key) } : p;
+}
+
+async function requireAccount() {
+  const { syncToken } = await syncSettings();
+  if (!syncToken) throw new ValidationError("请先登录 LocaLingo 账号（学习中心）再收藏，查词和翻译不需要登录");
+}
+
 const LEARNING_HANDLERS = {
   "learning:lookup": (m) => handleLookup(m),
   "learning:save": async (m) => {
-    const r = await store.saveItem(m.payload || {});
+    await requireAccount();
+    const r = await store.saveItem(withFittedKey(m.payload));
     scheduleSync();
     return r;
   },
   "learning:undo": (m) => handleUndo(m),
   "learning:save-sentence": async (m) => {
-    const r = await store.saveSentence(m.payload || {});
+    await requireAccount();
+    const r = await store.saveSentence(withFittedKey(m.payload));
     scheduleSync();
     return r;
   },
@@ -245,10 +295,14 @@ const LEARNING_HANDLERS = {
   "learning:voices": async () => ({ voices: await englishVoices() }),
   "learning:summary": async () => {
     const prefs = await getPrefs();
-    return { summary: await store.reviewSummary({ dailyNew: prefs.dailyNew }), dictionary: await dictionary.info().then((m) => (m ? { package_id: m.package_id, entries: m.entries } : null)) };
+    const dict = await dictionary.info();
+    if (!dict) ensureDictionary();
+    const { dictInstall: progress = null } = dict ? {} : await chrome.storage.local.get("dictInstall");
+    return { summary: await store.reviewSummary({ dailyNew: prefs.dailyNew }), dictionary: dict ? { package_id: dict.package_id, entries: dict.entries } : null, dictInstall: progress };
   },
   "learning:page-items": async (m) => ({ items: await store.itemsForPage(String(m.url || "")) }),
   "learning:sync-now": () => syncNow(),
+  "learning:install-dictionary": () => ensureDictionary(),
   "learning:changed": async () => {
     scheduleSync();
     return { ok: true };

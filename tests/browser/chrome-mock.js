@@ -101,12 +101,8 @@
         ok: true,
         async json() {
           return fixture.scenario === "legacy"
-            ? { loaded: true, model: "fixture/legacy-model" }
-            : {
-                authorized: Boolean(fixture.local.authToken),
-                loaded: true,
-                model: "fixture/local-model",
-              };
+            ? { authorized: false, loaded: true, model: "fixture/legacy-model" }
+            : { authorized: true, loaded: true, model: "fixture/local-model" };
         },
       };
     };

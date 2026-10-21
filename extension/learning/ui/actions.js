@@ -22,6 +22,7 @@ export function cardHandlers(env, { context = null, refresh = () => {}, onLookup
   const cardKey = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   return {
     async save(entry, sense, lk) {
+      if (!(await env.sync.status()).configured) throw new Error("请先登录 LocaLingo 账号再收藏，查词不需要登录");
       const r = await env.store.saveItem({
         idempotency_key: `${cardKey}:${++saveCounter}:${sense.id}`,
         headword: entry.w,

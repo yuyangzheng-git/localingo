@@ -36,7 +36,8 @@ def main(argv: list[str] | None = None) -> int:
         uvicorn.run("localingo_server.app:app", host=args.host, port=args.port, proxy_headers=True)
         return 0
 
-    db = Database(Settings().db_path)
+    settings = Settings()
+    db = Database(settings.db_path, mysql_url=settings.mysql_url)
     try:
         if args.cmd == "create-user":
             auth.create_user(db, args.username, _read_password())

@@ -37,15 +37,38 @@ def settings(tmp_path):
     (web / "learn.html").write_text("<!doctype html><title>Learn</title>")
     (web / "index.html").write_text("<!doctype html><title>LocaLingo</title><a href='/learn.html'>进入我的个人空间</a>")
     (web / "index.css").write_text("body{}")
+    (web / "landing.js").write_text("console.log(1)")
     (web / "learn" / "learn.js").write_text("console.log(1)")
     (web / "manifest.json").write_text("{}")
     (tmp_path / "secret.txt").write_text("nope")
-    return Settings(data_dir=tmp_path / "data", web_root=web, dict_dir=dist, dict_variant="base",
+    release = tmp_path / "release"
+    release.mkdir()
+    (release / "install.sh").write_text("#!/bin/bash\necho hi\n")
+    (release / "localingo-extension.zip").write_bytes(b"PK")
+    (release / "other.zip").write_bytes(b"PK")
+    return Settings(data_dir=tmp_path / "data", web_root=web, dict_dir=dist, release_dir=release, dict_variant="base",
                     allow_signup=False, admin_user="alice", admin_password=PASSWORD, cors_origins=[], token_days=30)
 
 
 @pytest.fixture
 def client(settings):
+    if settings.mysql_url:
+        # Shared MySQL backend: reset tables so tests stay independent
+        # (each test would otherwise see the previous test's users and tokens).
+        import pymysql
+        from urllib.parse import urlparse
+
+        u = urlparse(settings.mysql_url)
+        conn = pymysql.connect(
+            host=u.hostname, port=u.port or 3306, user=u.username, password=u.password or "",
+            database=(u.path or "/").lstrip("/"), charset="utf8mb4", autocommit=True,
+        )
+        with conn.cursor() as cur:
+            cur.execute("SET FOREIGN_KEY_CHECKS=0")
+            for t in ("tokens", "records", "user_seq", "users"):
+                cur.execute(f"TRUNCATE TABLE {t}")
+            cur.execute("SET FOREIGN_KEY_CHECKS=1")
+        conn.close()
     with TestClient(create_app(settings)) as c:
         yield c
 
@@ -191,6 +214,7 @@ def test_web_app_files_only(client):
     assert "default-src 'self'" in r.headers["content-security-policy"]
     assert client.get("/index.css").status_code == 200
     assert client.get("/learn.html").status_code == 200
+    assert client.get("/landing.js").status_code == 200
     assert client.get("/learn/learn.js").status_code == 200
     assert client.get("/manifest.json").status_code == 404
     assert client.get("/learn/../../secret.txt").status_code == 404
@@ -204,3 +228,14 @@ def test_cors_allows_extensions_only(client):
     assert ok.headers.get("access-control-allow-origin") == ext
     bad = client.options("/api/sync/push", headers={"Origin": "https://evil.example", **pre})
     assert "access-control-allow-origin" not in bad.headers
+
+
+def test_install_downloads(client):
+    r = client.get("/install.sh")
+    assert r.status_code == 200 and r.text.startswith("#!/bin/bash")
+    assert r.headers["content-type"].startswith("text/plain")
+    z = client.get("/download/localingo-extension.zip")
+    assert z.status_code == 200 and z.headers["content-type"] == "application/zip"
+    assert client.get("/download/localingo-translator.tar.gz").status_code == 404  # not built
+    assert client.get("/download/other.zip").status_code == 404
+    assert client.get("/download/..%2Fsecret.txt").status_code == 404
