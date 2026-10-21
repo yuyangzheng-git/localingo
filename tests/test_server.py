@@ -12,44 +12,45 @@ class FakeTranslator:
         return [f"zh:{t}" for t in texts]
 
 
+EXT = {"Origin": "chrome-extension://" + "a" * 32}
+
+
 @pytest.fixture
-def client(monkeypatch, tmp_path):
-    monkeypatch.delenv("WEB_TRANSLATOR_TOKEN", raising=False)
-    monkeypatch.setattr(server, "TOKEN_FILE", tmp_path / "token")
-    monkeypatch.setattr(server, "_cached_token", None)
+def client(monkeypatch):
     monkeypatch.setattr(server, "_translator", FakeTranslator())
-    return TestClient(server.app)
+    return TestClient(server.app, base_url="http://127.0.0.1:8765")
 
 
-def test_token_is_random_and_persisted(client):
-    token = server._token()
-    assert token != "web-translator-local-token" and len(token) >= 24
-    assert server.TOKEN_FILE.read_text().strip() == token
-    assert server.TOKEN_FILE.stat().st_mode & 0o777 == 0o600
-
-
-def test_translate_requires_token(client):
-    assert client.post("/translate", json={"texts": ["hi"]}).status_code == 401
-    bad = client.post("/translate", json={"texts": ["hi"]}, headers={"X-Auth-Token": "nope"})
-    assert bad.status_code == 401
-
-
-def test_translate_with_token(client):
-    resp = client.post("/translate", json={"texts": ["a", "b"]}, headers={"X-Auth-Token": server._token()})
+def test_translate_from_extension_needs_no_token(client):
+    resp = client.post("/translate", json={"texts": ["a", "b"]}, headers=EXT)
     assert resp.status_code == 200
     assert resp.json() == {"translations": ["zh:a", "zh:b"]}
 
 
-def test_health_reports_authorization(client):
-    assert client.get("/health").json()["authorized"] is False
-    assert client.get("/health", headers={"X-Auth-Token": server._token()}).json()["authorized"] is True
+@pytest.mark.parametrize("origin", [None, "https://evil.example", "http://127.0.0.1:8765", "null", "chrome-extension://short"])
+def test_translate_rejects_other_origins(client, origin):
+    headers = {"Origin": origin} if origin else {}
+    assert client.post("/translate", json={"texts": ["hi"]}, headers=headers).status_code == 403
+
+
+def test_translate_rejects_dns_rebinding_host(client):
+    resp = client.post("/translate", json={"texts": ["hi"]}, headers={**EXT, "Host": "evil.example:8765"})
+    assert resp.status_code == 403
+
+
+def test_translate_accepts_localhost_host(client):
+    assert client.post("/translate", json={"texts": ["hi"]}, headers={**EXT, "Host": "localhost:8765"}).status_code == 200
+
+
+def test_health_is_open(client):
+    data = client.get("/health").json()
+    assert data["status"] == "ok" and data["authorized"] is True
 
 
 def test_request_limits(client):
-    headers = {"X-Auth-Token": server._token()}
-    too_many = client.post("/translate", json={"texts": ["x"] * (server.MAX_TEXTS + 1)}, headers=headers)
+    too_many = client.post("/translate", json={"texts": ["x"] * (server.MAX_TEXTS + 1)}, headers=EXT)
     assert too_many.status_code == 422
-    too_long = client.post("/translate", json={"texts": ["x" * (server.MAX_TEXT_CHARS + 1)]}, headers=headers)
+    too_long = client.post("/translate", json={"texts": ["x" * (server.MAX_TEXT_CHARS + 1)]}, headers=EXT)
     assert too_long.status_code == 413
 
 

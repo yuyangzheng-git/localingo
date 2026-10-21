@@ -9,7 +9,7 @@ import { DEFAULT_PREFS, normalizePrefs } from "./learning/prefs.js";
 import { LearningStore, ValidationError } from "./learning/store.js";
 import { ACCOUNT_SERVER, ApiClient, syncOnce } from "./learning/sync.js";
 
-const DEFAULT_SERVER_URL = "http://127.0.0.1:8765";
+const TRANSLATOR_URL = "http://127.0.0.1:8765";
 const MAX_MESSAGE_CHARS = 40_000;
 const SYNC_ALARM = "localingo-sync";
 const SYNC_DEBOUNCE_MS = 5000;
@@ -19,33 +19,18 @@ const store = new LearningStore();
 
 // --- translation (local MLX server) ---------------------------------------------
 
-async function getServerUrl() {
-  const { serverUrl } = await chrome.storage.sync.get({ serverUrl: DEFAULT_SERVER_URL });
-  return (serverUrl || DEFAULT_SERVER_URL).replace(/\/+$/, "");
-}
-
-// The token is printed by `uv run web-translator` and pasted into the popup.
-// Kept in storage.local (not sync) so it stays on this machine.
-async function getAuthToken() {
-  const { authToken } = await chrome.storage.local.get({ authToken: "" });
-  return authToken;
-}
-
+// The translation service installed by install.sh (a LaunchAgent on this Mac). It only
+// accepts requests from Chrome extensions, so there is no token to configure.
 async function translateTexts(texts) {
-  const token = await getAuthToken();
-  if (!token) {
-    throw new Error("no auth token — paste the server's token into the extension popup");
-  }
-  const resp = await fetch(`${await getServerUrl()}/translate`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Auth-Token": token,
-    },
-    body: JSON.stringify({ texts }),
-  });
-  if (resp.status === 401) {
-    throw new Error("auth token rejected — copy the current token from the server into the popup");
+  let resp;
+  try {
+    resp = await fetch(`${TRANSLATOR_URL}/translate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ texts }),
+    });
+  } catch {
+    throw new Error("本地翻译服务未运行 — 请在官网运行一键安装，或重新启动电脑后再试");
   }
   if (!resp.ok) {
     throw new Error(`server error ${resp.status}: ${await resp.text()}`);
@@ -56,9 +41,7 @@ async function translateTexts(texts) {
 
 async function checkHealth() {
   try {
-    const resp = await fetch(`${await getServerUrl()}/health`, {
-      headers: { "X-Auth-Token": await getAuthToken() },
-    });
+    const resp = await fetch(`${TRANSLATOR_URL}/health`);
     return resp.ok ? await resp.json() : null;
   } catch {
     return null;

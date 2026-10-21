@@ -48,6 +48,11 @@
         </div>
       </section>
       <div class="notice" id="notice" role="status" hidden></div>
+      <div class="setup" id="setup" hidden>
+        <button type="button" class="secondary connect" id="installLink">
+          打开一键安装页面 <span aria-hidden="true">↗</span>
+        </button>
+      </div>
       <div class="page-error" id="pageError" hidden>
         <p id="pageErrorText"></p>
         <button id="retryFailed" class="text-button" type="button">
@@ -170,63 +175,9 @@
         </div>
         <p class="action-hint">选中英文单词或短语即可查词、收藏，不需要连接翻译服务。</p>
       </section>
-      <details class="settings" id="settings">
-        <summary>
-          <span>连接与设置</span><span id="connectionSummary">本地服务</span>
-        </summary>
-        <form id="connectionForm" novalidate>
-          <label class="field" for="serverUrl">本地服务器</label
-          ><input
-            id="serverUrl"
-            type="url"
-            placeholder="http://127.0.0.1:8765"
-            spellcheck="false"
-            autocomplete="off"
-            aria-describedby="serverHelp"
-          />
-          <p class="field-help" id="serverHelp">
-            支持 127.0.0.1 或 localhost，页面内容留在本机。
-          </p>
-          <label class="field" for="authToken">访问令牌</label>
-          <div class="input-row">
-            <input
-              id="authToken"
-              type="password"
-              placeholder="粘贴启动日志中的令牌"
-              spellcheck="false"
-              autocomplete="off"
-            /><button
-              type="button"
-              class="secondary reveal"
-              id="revealToken"
-              aria-label="显示令牌"
-              aria-pressed="false"
-            >
-              显示
-            </button>
-          </div>
-          <button type="submit" class="secondary connect" id="saveConnection">
-            保存并连接 <span aria-hidden="true">↗</span>
-          </button>
-          <p id="settingsFeedback" class="field-help" role="status"></p>
-          <div class="setup-help">
-            <span>还没启动服务？在项目目录运行</span>
-            <div>
-              <code>uv run web-translator</code
-              ><button type="button" class="text-button" id="copyCommand">
-                复制
-              </button>
-            </div>
-            <p>首次翻译可能需要下载或加载模型，请耐心等待。</p>
-          </div>
-        </form>
-      </details>
     </main>
     <footer>
-      <span
-        ><span class="privacy-dot" aria-hidden="true"></span> On your Mac. In
-        your control.</span
-      ><span id="shortcutHint"><kbd>Alt</kbd> + <kbd>T</kbd></span>
+      <span>快捷键</span><span id="shortcutHint"><kbd>Alt</kbd> + <kbd>T</kbd></span>
     </footer>
     <script src="popup.js"></script>
   </body>

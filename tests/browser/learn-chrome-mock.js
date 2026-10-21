@@ -138,7 +138,6 @@
     }
     return realFetch(url, opts);
   };
-  chrome.storage.local.set({ authToken: "harness-token" });
   // Start signed in to a LocaLingo account (saving words needs one); ?signedout doesn't.
   if (!new URLSearchParams(location.search).has("signedout")) chrome.storage.local.set({ syncToken: "harness-sync-tester", syncUser: "tester", syncOwner: "tester" });
 })();
