@@ -24,8 +24,8 @@ The first start creates that account (remove the two variables afterwards). The 
 build downloads ECDICT at a pinned commit, verifies its SHA-256 and builds the `base`
 (≈8 MB) and `full` (≈25 MB) dictionary packages.
 
-The container listens on `127.0.0.1:8080`. Put HTTPS in front of it — the extension
-only syncs over `https://` (except `localhost`). With Caddy:
+The container listens on `127.0.0.1:8080`. Put HTTPS in front of it so passwords and
+tokens are not sent in clear text. With Caddy:
 
 ```
 learn.example.com {
@@ -34,11 +34,11 @@ learn.example.com {
 ```
 
 Then open `https://learn.example.com`. The root is a project-introduction landing
-page — click 「进入我的个人空间」 to reach the learning center. You can use it
-directly in **local mode** (data saved in the browser, dictionary lookups work)
-without signing in. To sync across devices, create an account and sign in; then
-in the extension's learning center (设置 → 同步) enter the same address and
-account.
+page — click 「进入我的个人空间」 to reach the learning center. Lookup works without
+signing in; the vocabulary book, sentences and review need an account. The Chrome
+extension signs in to the server set as `ACCOUNT_SERVER` in
+`extension/learning/sync.js` (the extension needs a host permission for it in
+`manifest.json`), so a self-hosted server means changing both.
 
 ### Accounts
 
@@ -47,7 +47,8 @@ docker compose -f server/compose.yaml exec localingo localingo-server create-use
 docker compose -f server/compose.yaml exec localingo localingo-server set-password alice
 ```
 
-Self-service sign-up is off; set `LOCALINGO_ALLOW_SIGNUP=true` to allow it.
+Self-service sign-up is off; set `LOCALINGO_ALLOW_SIGNUP=true` to allow it (the
+learning center then shows 「注册新账号」).
 
 ### Settings
 
@@ -81,7 +82,7 @@ It serves the web app straight from `../extension` and dictionary packages from
 
 All endpoints except `/api/health`, `/api/auth/login`, `/api/auth/signup` and the
 `/api/dict/*` endpoints need `Authorization: Bearer <token>`. Dictionary lookups
-are public so the learning center works in local mode without signing in.
+are public so lookup and dictionary installs work without signing in.
 
 | Method | Path | |
 | --- | --- | --- |

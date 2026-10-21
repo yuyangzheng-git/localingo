@@ -120,7 +120,25 @@
       await new Promise((r) => setTimeout(r, 60));
       return new Response(JSON.stringify({ translations: texts.map((t) => `【译】${t.slice(0, 40)}`) }), { status: 200 });
     }
+    // Fake LocaLingo account server: any password of 10+ characters signs in.
+    if (String(url).startsWith("http://101.35.6.63:8083/api/")) {
+      const path = new URL(url).pathname;
+      const body = opts?.body ? JSON.parse(opts.body) : {};
+      const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
+      if (path === "/api/health") return json({ ok: true, signup: true, dictionary: true });
+      if (path === "/api/auth/login" || path === "/api/auth/signup") {
+        if ((body.password || "").length < 10) return json({ detail: "用户名或密码错误" }, 401);
+        return json({ token: `harness-sync-${body.username}`, user: { username: body.username } });
+      }
+      if (path === "/api/auth/logout") return new Response(null, { status: 204 });
+      if (path === "/api/sync/push") return json({ accepted: 0 });
+      if (path === "/api/sync/pull") return json({ changes: {}, cursor: 0, more: false });
+      if (path === "/api/dict/info") return json({ packages: [] });
+      return json({ detail: "not found" }, 404);
+    }
     return realFetch(url, opts);
   };
   chrome.storage.local.set({ authToken: "harness-token" });
+  // Start signed in to a LocaLingo account (saving words needs one); ?signedout doesn't.
+  if (!new URLSearchParams(location.search).has("signedout")) chrome.storage.local.set({ syncToken: "harness-sync-tester", syncUser: "tester", syncOwner: "tester" });
 })();

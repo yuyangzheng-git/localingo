@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Login gate checks</title>
+    <!-- Run: node tests/browser/serve.mjs, then open
+         http://127.0.0.1:8791/tests/browser/login-harness.html
+         Drives extension/learn.html?harness&signedout (mocked chrome.*, fake account
+         server) through the sign-in gate. Results land in #results. -->
+    <style>
+      body { font: 14px system-ui; margin: 16px; }
+      iframe { width: 1000px; height: 640px; border: 1px solid #ccc; }
+      .pass { color: #186a3b; } .fail { color: #b03a2e; }
+    </style>
+  </head>
+  <body>
+    <ol id="results"></ol>
+    <p id="summary">running…</p>
+    <iframe id="app" src="/extension/learn.html?harness&signedout#words"></iframe>
+    <script type="module">
+      const frame = document.getElementById("app");
+      const results = document.getElementById("results");
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      let failed = 0;
+      const check = (name, ok, detail = "") => {
+        if (!ok) failed++;
+        results.append(Object.assign(document.createElement("li"), { className: ok ? "pass" : "fail", textContent: `${ok ? "PASS" : "FAIL"} ${name}${detail ? ` — ${detail}` : ""}` }));
+      };
+      const until = async (fn, ms = 4000) => {
+        for (const t0 = Date.now(); Date.now() - t0 < ms; await sleep(50)) if (fn()) return true;
+        return false;
+      };
+      await new Promise((r) => frame.addEventListener("load", r, { once: true }));
+      const w = frame.contentWindow;
+      const $ = (id) => w.document.getElementById(id);
+      const visible = (id) => !$(id).hidden;
+      const navShown = (route) => !w.document.querySelector(`#nav [data-route="${route}"]`).hidden;
+      const go = async (hash) => {
+        w.location.hash = hash;
+        await sleep(300);
+      };
+      w.confirm = () => true;
+
+      check("signed out: learning pages show the login page", await until(() => visible("page-login") && !visible("page-words")));
+      check("signed out: nav hides learning links, shows 查词 and 登录", !navShown("words") && !navShown("settings") && navShown("lookup") && navShown("login"));
+      check("signed out: sync badge says 未登录", await until(() => $("syncState").textContent === "未登录"), $("syncState").textContent);
+      check("sign-up offered when the server allows it", await until(() => visible("signupBtn")));
+
+      await go("#lookup");
+      check("signed out: lookup page stays open", visible("page-lookup") && !visible("page-login"));
+      check("signed out: offline dictionary panel is on the lookup page", !$("dictStatus").closest("section").hidden && /尚未安装|已安装/.test($("dictStatus").textContent), $("dictStatus").textContent);
+
+      const save = await w.chrome.runtime.sendMessage({ type: "learning:save", payload: {} });
+      check("signed out: saving from a web page is refused", save.ok === false && /登录/.test(save.error), save.error);
+
+      await go("#review");
+      check("signed out: #review shows login", visible("page-login"));
+      $("loginUser").value = "tester";
+      $("loginPassword").value = "short";
+      $("loginForm").requestSubmit();
+      check("bad password shows an error", await until(() => /错误/.test($("loginMsg").textContent)), $("loginMsg").textContent);
+
+      $("loginPassword").value = "a long enough password";
+      $("loginForm").requestSubmit();
+      check("sign-in lands on the requested page", await until(() => visible("page-review") && !visible("page-login")), w.location.hash);
+      const stored = await w.chrome.storage.local.get({ syncToken: "", syncUser: "", syncOwner: "" });
+      check("sign-in stores the token for the fixed server", stored.syncToken === "harness-sync-tester" && stored.syncOwner === "tester", JSON.stringify(stored));
+      check("signed in: nav shows learning links, hides 登录", navShown("words") && navShown("settings") && !navShown("login"));
+      check("signed in: password field cleared", $("loginPassword").value === "");
+
+      await go("#settings");
+      check("settings shows the account", await until(() => /已登录 tester @ 101\.35\.6\.63/.test($("syncStatus").textContent)), $("syncStatus").textContent);
+      check("settings has no server address field", !$("syncServer"));
+
+      await go("#login");
+      check("#login while signed in goes to words", await until(() => visible("page-words")));
+
+      await go("#settings");
+      $("syncSignOut").click();
+      check("sign-out returns to the login page", await until(() => visible("page-login")));
+      const after = await w.chrome.storage.local.get({ syncToken: "x", syncOwner: "" });
+      check("sign-out clears the token but remembers the owner", after.syncToken === "" && after.syncOwner === "tester", JSON.stringify(after));
+
+      $("loginUser").value = "newbie";
+      $("loginPassword").value = "another long password";
+      $("signupBtn").click();
+      check("sign-up signs in as the new account", await until(() => visible("page-words")));
+      const owner = await w.chrome.storage.local.get({ syncOwner: "", syncUser: "" });
+      check("new account becomes the local data owner", owner.syncOwner === "newbie" && owner.syncUser === "newbie", JSON.stringify(owner));
+
+      await w.chrome.storage.local.set({ syncToken: "" });
+      check("token revoked elsewhere: page falls back to login", await until(() => visible("page-login")));
+
+      document.getElementById("summary").textContent = failed ? `${failed} FAILED` : "ALL PASSED";
+      document.title = failed ? `FAIL ${failed}` : "ALL PASSED";
+    </script>
+  </body>
+</html>

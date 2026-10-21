@@ -1,5 +1,6 @@
 // LocaLingo learning center. Runs as the extension's full-tab page and as the hosted
-// web app (see learning/env.js for the differences).
+// web app (see learning/env.js for the differences). Everything except lookup needs a
+// signed-in LocaLingo account.
 
 import { POS_LABELS } from "../learning/dict.js";
 import { removeDictionary, storageEstimate } from "../learning/dict-idb.js";
@@ -14,6 +15,8 @@ const env = createEnv();
 const store = env.store;
 const $ = (id) => document.getElementById(id);
 const PAGES = ["login", "words", "sentences", "review", "lookup", "settings"];
+const PUBLIC_PAGES = ["login", "lookup"];
+let signedIn = false;
 let prefs = await env.getPrefs();
 const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -120,8 +123,11 @@ function parseHash() {
 }
 
 async function route() {
-  if (env.kind === "web" && !env.signedIn && location.hash === "#login") return showPage("login");
+  signedIn = (await env.sync.status()).configured;
   const r = parseHash();
+  if (r.page === "login" && signedIn) return void (location.hash = "#words");
+  // Signed out: keep the requested address so signing in lands there.
+  if (!signedIn && !PUBLIC_PAGES.includes(r.page)) return showPage("login");
   showPage(r.page);
   if (r.page === "words") {
     await loadWords(true);
@@ -132,12 +138,14 @@ async function route() {
     const q = r.params?.get("q");
     if (q) runLookup(q);
     $("lookupQ").focus();
+    if (env.kind === "extension") loadDictionary();
   } else if (r.page === "settings") loadSettings();
 }
 
 function showPage(name) {
   for (const p of PAGES) $(`page-${p}`).hidden = p !== name;
-  $("nav").hidden = name === "login";
+  for (const a of document.querySelectorAll("#nav [data-auth]")) a.hidden = !signedIn;
+  for (const a of document.querySelectorAll("#nav [data-guest]")) a.hidden = signedIn;
   for (const a of document.querySelectorAll("#nav a")) {
     if (a.dataset.route === name) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
@@ -148,18 +156,24 @@ function showPage(name) {
 
 window.addEventListener("hashchange", route);
 
-// --- sign in (web app) ---------------------------------------------------------------------
+// --- sign in -----------------------------------------------------------------------------
+
+function afterSignIn() {
+  if (!location.hash || location.hash === "#login") location.hash = "#words";
+  else route();
+  refreshSyncState();
+  refreshBadges();
+}
 
 $("loginForm").addEventListener("submit", async (e) => {
   e.preventDefault();
-  say("loginMsg", "");
+  say("loginMsg", "正在登录…");
   $("loginBtn").disabled = true;
   try {
-    await env.sync.signIn("", $("loginUser").value.trim(), $("loginPassword").value);
+    await env.sync.signIn($("loginUser").value.trim(), $("loginPassword").value);
     $("loginPassword").value = "";
-    if (!location.hash || location.hash === "#login") location.hash = "#words";
-    else route();
-    refreshSyncState();
+    say("loginMsg", "");
+    afterSignIn();
   } catch (err) {
     say("loginMsg", err.message, "error");
   } finally {
@@ -168,15 +182,27 @@ $("loginForm").addEventListener("submit", async (e) => {
 });
 
 $("signupBtn").addEventListener("click", async () => {
-  say("loginMsg", "");
+  say("loginMsg", "正在注册…");
+  $("signupBtn").disabled = true;
   try {
-    await env.sync.signUp($("loginUser").value.trim(), $("loginPassword").value);
-    location.hash = "#words";
-    route();
+    await env.sync.signUp($("loginUser").value.trim().toLowerCase(), $("loginPassword").value);
+    $("loginPassword").value = "";
+    say("loginMsg", "");
+    afterSignIn();
   } catch (err) {
     say("loginMsg", err.message, "error");
+  } finally {
+    $("signupBtn").disabled = false;
   }
 });
+
+fetch(`${env.server}/api/health`, { credentials: "omit" })
+  .then((r) => r.json())
+  .then((d) => {
+    $("signupBtn").hidden = !d.signup;
+    $("signupHint").hidden = !d.signup;
+  })
+  .catch(() => {});
 
 if (env.kind === "web") {
   env.onSynced = () => {
@@ -189,10 +215,6 @@ if (env.kind === "web") {
     location.hash = "#login";
     route();
   };
-  fetch("/api/health")
-    .then((r) => r.json())
-    .then((d) => ($("signupBtn").hidden = !d.signup))
-    .catch(() => {});
   for (const el of document.querySelectorAll("[data-ext-only]")) el.hidden = true;
 }
 
@@ -658,7 +680,6 @@ async function loadSettings() {
   $("pRate").value = String(prefs.speechRate);
   $("pRemote").checked = prefs.allowRemoteVoices;
   loadVoices();
-  if (env.kind === "extension") loadDictionary();
   refreshSyncPanel();
   const est = await storageEstimate();
   $("storageInfo").textContent = est ? `本浏览器已使用约 ${(est.usage / 1e6).toFixed(1)} MB 存储（含离线词典）。` : "";
@@ -702,27 +723,22 @@ async function loadDictionary() {
   const info = await env.dictionary.info();
   $("dictStatus").textContent = info
     ? `已安装：${info.package_id}（${info.entries?.toLocaleString()} 个词条，ECDICT ${String(info.source_version).slice(0, 7)}），导入于 ${fmtDay.format(new Date(info.imported_at))}。`
-    : "尚未安装离线词典。可以从你的同步服务器安装，或导入词典包文件（.jsonl.gz）。";
+    : "尚未安装离线词典。可以从 LocaLingo 服务器安装（无需登录），或导入词典包文件（.jsonl.gz）。安装后查词完全在本机完成。";
   $("dictRemove").hidden = !info;
-  const sync = await env.sync.status();
-  $("dictServerRow").hidden = true;
-  if (sync.configured) {
-    try {
-      const api = await syncApi();
-      const data = await api.get("/api/dict/info");
-      $("dictPackages").replaceChildren(
-        ...data.packages.map((p) => h("option", { value: p.file, "data-sha": p.sha256 }, `${p.variant === "full" ? "完整包" : "基础包"} · ${p.entries.toLocaleString()} 词条 · ${(p.bytes / 1e6).toFixed(1)} MB`)),
-      );
-      $("dictServerRow").hidden = !data.packages.length;
-    } catch {
-      // server unreachable: file import still works
-    }
+  try {
+    // Dictionary packages are public: installing one needs no account.
+    const data = await dictApi().get("/api/dict/info");
+    $("dictPackages").replaceChildren(
+      ...data.packages.map((p) => h("option", { value: p.file, "data-sha": p.sha256 }, `${p.variant === "full" ? "完整包" : "基础包"} · ${p.entries.toLocaleString()} 词条 · ${(p.bytes / 1e6).toFixed(1)} MB`)),
+    );
+    $("dictServerRow").hidden = !data.packages.length;
+  } catch {
+    $("dictServerRow").hidden = true; // server unreachable: file import still works
   }
 }
 
-async function syncApi() {
-  const s = await chrome.storage.local.get({ syncServer: "", syncToken: "" });
-  return new ApiClient({ baseUrl: s.syncServer, token: s.syncToken, timeoutMs: 120000 });
+function dictApi() {
+  return new ApiClient({ baseUrl: env.server, timeoutMs: 120000 });
 }
 
 function runImport(buffer, expectedSha256) {
@@ -762,8 +778,7 @@ $("dictDownload").addEventListener("click", async () => {
   if (!opt) return;
   say("dictMsg", "正在从服务器下载…");
   try {
-    const s = await chrome.storage.local.get({ syncServer: "", syncToken: "" });
-    const resp = await fetch(`${s.syncServer}/api/dict/packages/${encodeURIComponent(opt.value)}`, { headers: { Authorization: `Bearer ${s.syncToken}` } });
+    const resp = await fetch(`${env.server}/api/dict/packages/${encodeURIComponent(opt.value)}`, { credentials: "omit" });
     if (!resp.ok) throw new Error(`服务器返回 ${resp.status}`);
     runImport(await resp.arrayBuffer(), opt.dataset.sha);
   } catch (err) {
@@ -780,43 +795,16 @@ $("dictRemove").addEventListener("click", async () => {
 
 async function refreshSyncPanel() {
   const s = await env.sync.status();
-  const configured = s.configured;
-  $("syncForm").hidden = env.kind === "web" ? configured : configured;
-  $("syncActions").hidden = !configured;
-  $("syncStatus").textContent = configured
-    ? `已登录 ${s.user} @ ${hostOf(s.server) || s.server}${s.lastAt ? ` · 上次同步 ${fmtDate.format(s.lastAt)}` : ""}`
-    : s.needsLogin && s.server
-      ? `与 ${hostOf(s.server)} 的登录已失效，请重新登录。`
-      : env.kind === "web"
-        ? "本地模式 — 数据保存在本浏览器中。登录后可跨设备同步。"
-        : "未开启同步。登录你的 LocaLingo 服务器后，扩展和网页会共享生词本与复习进度。";
+  $("syncStatus").textContent = `已登录 ${s.user} @ ${hostOf(s.server || location.origin)}${s.lastAt ? ` · 上次同步 ${fmtDate.format(s.lastAt)}` : ""}`;
   if (s.lastError) say("syncMsg", `同步失败：${s.lastError}`, "error");
-  if (env.kind === "extension" && s.server) $("syncServer").value = s.server;
   refreshSyncState();
 }
 
 async function refreshSyncState() {
   const s = await env.sync.status();
-  $("syncState").textContent = !s.configured ? (env.kind === "web" ? "本地模式" : "本机") : s.lastError ? "同步出错" : s.lastAt ? `已同步 ${fmtDate.format(s.lastAt)}` : "等待同步";
+  $("syncState").textContent = !s.configured ? "未登录" : s.lastError ? "同步出错" : s.lastAt ? `已同步 ${fmtDate.format(s.lastAt)}` : "等待同步";
   $("syncState").dataset.kind = s.lastError ? "error" : "";
 }
-
-$("syncForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  say("syncMsg", "正在连接…");
-  $("syncSignIn").disabled = true;
-  try {
-    const r = await env.sync.signIn($("syncServer").value, $("syncUser").value.trim(), $("syncPassword").value);
-    $("syncPassword").value = "";
-    say("syncMsg", r?.ok ? `同步完成：上传 ${r.pushed}，下载 ${r.pulled}` : r?.error || "已登录", r?.ok ? "ok" : "error");
-    refreshSyncPanel();
-    route();
-  } catch (err) {
-    say("syncMsg", err.message, "error");
-  } finally {
-    $("syncSignIn").disabled = false;
-  }
-});
 
 $("syncNow").addEventListener("click", async () => {
   say("syncMsg", "同步中…");
@@ -826,7 +814,9 @@ $("syncNow").addEventListener("click", async () => {
 });
 
 $("syncSignOut").addEventListener("click", async () => {
-  const text = env.kind === "web" ? "退出登录？这台设备上的网页副本会被清除（服务器上的数据保留）。" : "退出同步登录？本机数据保留，只是不再同步。";
+  const text = env.kind === "web"
+    ? "退出登录？这台设备上的网页副本会被清除（服务器上的数据保留）。"
+    : "退出登录？账号数据保留在服务器和本机，下次登录同一账号即可继续；登录其他账号时本机副本会被清除。";
   if (!confirm(text)) return;
   try {
     await env.sync.signOut();
@@ -834,12 +824,10 @@ $("syncSignOut").addEventListener("click", async () => {
     if (err.code !== "unsynced" || !confirm(`${err.message}\n\n仍然退出？`)) return say("syncMsg", err.message, "error");
     await env.sync.signOut({ force: true });
   }
-  say("syncMsg", "已退出");
-  if (env.kind === "web") {
-    location.hash = "#login";
-    return route();
-  }
-  refreshSyncPanel();
+  say("syncMsg", "");
+  location.hash = "#login";
+  route();
+  refreshSyncState();
 });
 
 // Data
@@ -911,7 +899,7 @@ document.addEventListener("visibilitychange", async () => {
   // Words may have been saved from web pages meanwhile.
   if (!$("page-words").hidden && !$("itemDialog").open) loadWords(true);
   refreshBadges();
-  if (env.kind === "web" && env.signedIn) {
+  if (env.kind === "web" && signedIn) {
     await env.sync.syncNow();
     refreshSyncState();
   }
@@ -920,6 +908,8 @@ document.addEventListener("visibilitychange", async () => {
 if (isExtension) {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === "local" && (changes.syncLastAt || changes.syncLastError)) refreshSyncState();
+    // Signed out elsewhere, or the server rejected the token.
+    if (area === "local" && changes.syncToken && !changes.syncToken.newValue && signedIn) route();
   });
 }
 
@@ -927,7 +917,7 @@ store.purgeTrash({ expiredOnly: true }).catch(() => {});
 await route();
 refreshBadges();
 refreshSyncState();
-if (env.kind === "web" && env.signedIn) {
+if (env.kind === "web" && signedIn) {
   env.sync.syncNow().then(() => {
     refreshSyncState();
     route();

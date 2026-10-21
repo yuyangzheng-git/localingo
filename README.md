@@ -204,16 +204,21 @@ A Qwen LoRA adapter can alternatively be loaded unmerged via
      --license data/upstream/ECDICT-LICENSE.txt --commit bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b
    ```
 
-   Then in the extension: 学习中心 → 设置 → 离线词典 → 从文件导入 →
+   Then in the extension: 学习中心 → 查词 → 离线词典 → 从 LocaLingo 服务器安装 (no
+   account needed), or 从文件导入 →
    `data/dist/localingo-dict-ecdict-base-bc015ed.jsonl.gz` (≈8 MB, 149k entries, a few
-   seconds). With a sync server you can install it from the server instead.
-2. **Sync (optional).** Deploy [server/](server/README.md) behind HTTPS, then 设置 → 同步.
+   seconds).
+2. **Account.** Translation and lookup run locally without an account. The vocabulary
+   book, saved sentences and review need a LocaLingo account on the server at
+   `http://101.35.6.63:8083` (set in `extension/learning/sync.js` as `ACCOUNT_SERVER`):
+   open the learning center and sign in or register. The extension and the web app
+   share the same account data.
 3. **Shortcut (optional).** `chrome://extensions/shortcuts` → *Look up the selected word*.
 
 New permissions in 0.4: `sidePanel` (learning side panel), `tts` (pronunciation with
-local voices), `alarms` (periodic sync), `unlimitedStorage` (offline dictionary), and
-optional access to your own sync server's `https://` origin, requested only when you
-sign in.
+local voices), `alarms` (periodic sync), `unlimitedStorage` (offline dictionary). 0.5
+adds host access to the LocaLingo account server (`http://101.35.6.63:8083/*`) and
+drops the optional access to arbitrary `https://` sync servers.
 
 ## Development
 
@@ -233,7 +238,9 @@ Open `http://127.0.0.1:8791/tests/browser/preview.html`. For the learning featur
 `http://127.0.0.1:8791/tests/browser/learn-harness.html` runs the real background
 script and content scripts against a mocked `chrome.*` (it imports the dictionary
 from `data/dist/`); `extension/learn.html?harness` and `extension/sidepanel.html?harness`
-open the learning pages the same way. See
+open the learning pages the same way (signed in to a fake account server; add
+`&signedout` to start signed out). `tests/browser/login-harness.html` checks the
+sign-in gate. See
 [the UI and interaction review](docs/UX_REVIEW.md) for implemented improvements,
 known limitations, and the next priorities. Reload the unpacked extension after
 updating it. A running older backend must be restarted from this project directory.

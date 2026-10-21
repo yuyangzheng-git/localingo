@@ -1,12 +1,13 @@
 // Service worker (ES module): selection translation via the local MLX server, and the
 // learning features — offline dictionary lookup, vocabulary book, speech, side panel
-// and sync — which work without the translation server.
+// and sync — which work without the translation server. Translation and lookup need
+// no account; saving to the vocabulary book needs a signed-in LocaLingo account.
 
 import { lookup } from "./learning/dict.js";
 import { IdbDictionary } from "./learning/dict-idb.js";
 import { DEFAULT_PREFS, normalizePrefs } from "./learning/prefs.js";
 import { LearningStore, ValidationError } from "./learning/store.js";
-import { ApiClient, syncOnce } from "./learning/sync.js";
+import { ACCOUNT_SERVER, ApiClient, syncOnce } from "./learning/sync.js";
 
 const DEFAULT_SERVER_URL = "http://127.0.0.1:8765";
 const MAX_MESSAGE_CHARS = 40_000;
@@ -133,21 +134,16 @@ let syncTimer = null;
 let syncRunning = null;
 
 async function syncSettings() {
-  return chrome.storage.local.get({ syncServer: "", syncToken: "", syncUser: "" });
+  return chrome.storage.local.get({ syncToken: "", syncUser: "" });
 }
 
 async function syncNow() {
   if (syncRunning) return syncRunning;
   syncRunning = (async () => {
-    const { syncServer, syncToken } = await syncSettings();
-    if (!syncServer || !syncToken) return { ok: false, skipped: true };
-    const origin = new URL(syncServer).origin + "/*";
-    if (!(await chrome.permissions.contains({ origins: [origin] }))) {
-      await chrome.storage.local.set({ syncLastError: "需要重新授权访问同步服务器" });
-      return { ok: false, error: "需要重新授权访问同步服务器" };
-    }
+    const { syncToken } = await syncSettings();
+    if (!syncToken) return { ok: false, skipped: true };
     try {
-      const result = await syncOnce(store, new ApiClient({ baseUrl: syncServer, token: syncToken }));
+      const result = await syncOnce(store, new ApiClient({ baseUrl: ACCOUNT_SERVER, token: syncToken }));
       await chrome.storage.local.set({ syncLastAt: Date.now(), syncLastError: "" });
       return { ok: true, ...result };
     } catch (err) {
@@ -179,6 +175,12 @@ chrome.runtime.onInstalled.addListener(async ({ reason }) => {
     chrome.contextMenus.create({ id: "translate-selection", title: "翻译成中文", contexts: ["selection"] });
     chrome.contextMenus.create({ id: "lookup-selection", title: "在 LocaLingo 中查词", contexts: ["selection"] });
   });
+  if (reason === "update") {
+    // 0.5 moved accounts to the fixed LocaLingo server: drop sign-ins to other servers.
+    const { syncServer } = await chrome.storage.local.get({ syncServer: "" });
+    if (syncServer && syncServer !== ACCOUNT_SERVER) await chrome.storage.local.set({ syncToken: "", syncUser: "" });
+    await chrome.storage.local.remove("syncServer");
+  }
   if (reason === "install") {
     // New users start in 学习阅读; upgrades keep their existing reading mode.
     const { displayMode } = await chrome.storage.sync.get("displayMode");
@@ -224,15 +226,22 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
 // --- messages -----------------------------------------------------------------------
 
+async function requireAccount() {
+  const { syncToken } = await syncSettings();
+  if (!syncToken) throw new ValidationError("请先登录 LocaLingo 账号（学习中心）再收藏，查词和翻译不需要登录");
+}
+
 const LEARNING_HANDLERS = {
   "learning:lookup": (m) => handleLookup(m),
   "learning:save": async (m) => {
+    await requireAccount();
     const r = await store.saveItem(m.payload || {});
     scheduleSync();
     return r;
   },
   "learning:undo": (m) => handleUndo(m),
   "learning:save-sentence": async (m) => {
+    await requireAccount();
     const r = await store.saveSentence(m.payload || {});
     scheduleSync();
     return r;

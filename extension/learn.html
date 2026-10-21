@@ -13,20 +13,21 @@
     <header class="topbar">
       <a class="brand" href="#words"><img src="icons/mark.svg" alt="" width="26" height="26" /><span>LocaLingo</span><small>学习中心</small></a>
       <nav class="nav" aria-label="学习中心" id="nav">
-        <a href="#words" data-route="words">生词与词组</a>
-        <a href="#sentences" data-route="sentences">收藏句子</a>
-        <a href="#review" data-route="review">今日复习 <span class="badge" id="navDue" hidden></span></a>
+        <a href="#words" data-route="words" data-auth>生词与词组</a>
+        <a href="#sentences" data-route="sentences" data-auth>收藏句子</a>
+        <a href="#review" data-route="review" data-auth>今日复习 <span class="badge" id="navDue" hidden></span></a>
         <a href="#lookup" data-route="lookup">查词</a>
-        <a href="#settings" data-route="settings">设置</a>
+        <a href="#settings" data-route="settings" data-auth>设置</a>
+        <a href="#login" data-route="login" data-guest>登录</a>
       </nav>
       <span class="sync-state" id="syncState" role="status"></span>
     </header>
 
     <main id="main" tabindex="-1">
-      <!-- Web app: sign in -->
+      <!-- Sign in: the learning center needs a LocaLingo account -->
       <section class="page narrow" id="page-login" hidden>
         <h1>登录 LocaLingo</h1>
-        <p class="muted">登录后可以在这里复习、整理生词，并与 Chrome 扩展同步。不登录也可以直接使用本地模式。</p>
+        <p class="muted">生词本、收藏句子和复习需要 LocaLingo 账号，数据保存在你的账号里，扩展和网页共用。查词和网页翻译不需要登录。</p>
         <form id="loginForm" class="stack" novalidate>
           <label class="field">用户名 <input id="loginUser" autocomplete="username" required maxlength="32" /></label>
           <label class="field">密码 <input id="loginPassword" type="password" autocomplete="current-password" required maxlength="256" /></label>
@@ -35,8 +36,9 @@
             <button class="btn" type="button" id="signupBtn" hidden>注册新账号</button>
           </div>
           <p class="form-msg" id="loginMsg" role="alert"></p>
+          <p class="muted small" id="signupHint" hidden>注册：填好用户名（3–32 位小写字母、数字、_ . -）和至少 10 位的密码，再点「注册新账号」。</p>
         </form>
-        <p class="muted"><a href="#words" id="skipLogin">跳过登录，使用本地模式 →</a></p>
+        <p class="muted"><a href="#lookup">不登录，只查词 →</a></p>
       </section>
 
       <!-- Onboarding (dismissible, shown above the word list) -->
@@ -197,6 +199,26 @@
           <button class="btn primary" type="submit">查询</button>
         </form>
         <div id="lookupCard"></div>
+
+        <section class="panel-box" aria-labelledby="sDict" data-ext-only>
+          <h2 id="sDict">离线词典</h2>
+          <p id="dictStatus" class="muted">读取中…</p>
+          <div class="row" id="dictServerRow" hidden>
+            <select id="dictPackages" aria-label="词典包"></select>
+            <button class="btn primary" type="button" id="dictDownload">从 LocaLingo 服务器安装</button>
+          </div>
+          <div class="row">
+            <label class="btn file">从文件导入… <input type="file" id="dictFile" accept=".gz,application/gzip" hidden /></label>
+            <button class="btn" type="button" id="dictRemove">移除词典</button>
+          </div>
+          <div class="progress" id="dictProgress" hidden>
+            <progress id="dictBar" max="1" value="0"></progress>
+            <span id="dictProgressText"></span>
+            <button class="btn" type="button" id="dictCancel">取消</button>
+          </div>
+          <p class="form-msg" id="dictMsg" role="status"></p>
+          <details class="muted small"><summary>来源与许可</summary><p id="dictLicense">ECDICT（MIT 许可，作者 Linwei）；英文释义源自 WordNet（Princeton University）。标注为 [网络] 的释义未收录。</p></details>
+        </section>
       </section>
 
       <!-- Settings -->
@@ -232,40 +254,10 @@
           <p class="form-msg" id="prefsMsg" role="status"></p>
         </section>
 
-        <section class="panel-box" aria-labelledby="sDict" data-ext-only>
-          <h2 id="sDict">离线词典</h2>
-          <p id="dictStatus" class="muted">读取中…</p>
-          <div class="row" id="dictServerRow" hidden>
-            <select id="dictPackages" aria-label="词典包"></select>
-            <button class="btn primary" type="button" id="dictDownload">从同步服务器安装</button>
-          </div>
-          <div class="row">
-            <label class="btn file">从文件导入… <input type="file" id="dictFile" accept=".gz,application/gzip" hidden /></label>
-            <button class="btn" type="button" id="dictRemove">移除词典</button>
-          </div>
-          <div class="progress" id="dictProgress" hidden>
-            <progress id="dictBar" max="1" value="0"></progress>
-            <span id="dictProgressText"></span>
-            <button class="btn" type="button" id="dictCancel">取消</button>
-          </div>
-          <p class="form-msg" id="dictMsg" role="status"></p>
-          <details class="muted small"><summary>来源与许可</summary><p id="dictLicense">ECDICT（MIT 许可，作者 Linwei）；英文释义源自 WordNet（Princeton University）。标注为 [网络] 的释义未收录。</p></details>
-        </section>
-
         <section class="panel-box" aria-labelledby="sSync">
-          <h2 id="sSync">同步</h2>
+          <h2 id="sSync">账号与同步</h2>
           <p class="muted" id="syncStatus"></p>
-          <form id="syncForm" class="stack" novalidate>
-            <label class="field" data-ext-only>服务器地址 <input id="syncServer" type="url" placeholder="https://learn.example.com" autocomplete="url" /></label>
-            <div class="grid2">
-              <label class="field">用户名 <input id="syncUser" autocomplete="username" maxlength="32" /></label>
-              <label class="field">密码 <input id="syncPassword" type="password" autocomplete="current-password" maxlength="256" /></label>
-            </div>
-            <div class="row">
-              <button class="btn primary" type="submit" id="syncSignIn">登录并同步</button>
-            </div>
-          </form>
-          <div class="row" id="syncActions" hidden>
+          <div class="row" id="syncActions">
             <button class="btn primary" type="button" id="syncNow">立即同步</button>
             <button class="btn" type="button" id="syncSignOut">退出登录</button>
           </div>
