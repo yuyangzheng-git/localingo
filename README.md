@@ -256,7 +256,8 @@ script and content scripts against a mocked `chrome.*` (it imports the dictionar
 from `data/dist/`); `extension/learn.html?harness` and `extension/sidepanel.html?harness`
 open the learning pages the same way (signed in to a fake account server; add
 `&signedout` to start signed out). `tests/browser/login-harness.html` checks the
-sign-in gate. See
+sign-in gate, and `tests/browser/chat-harness.html` checks a streaming AI chat page
+(React-style node patching, mid-answer pauses, composer and dialogs). See
 [the UI and interaction review](docs/UX_REVIEW.md) for implemented improvements,
 known limitations, and the next priorities. Reload the unpacked extension after
 updating it. A running older backend must be restarted from this project directory.

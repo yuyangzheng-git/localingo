@@ -14,7 +14,10 @@
 // - Visible units are sent to the server in small batches.
 // - Live pages are followed: when a paragraph's text changes (e.g. an AI chat
 //   streaming its answer) or hidden content is expanded, the affected region is
-//   (re)translated once it has stopped changing for STABLE_MS.
+//   (re)translated once it has stopped changing for STABLE_MS. Answers an AI chat
+//   marks as still streaming wait until the stream ends, however long it pauses.
+// - Script-rendered apps (React, Vue…) keep references to their DOM nodes, so the
+//   page's own nodes are never moved — only our elements are added next to them.
 // - Translations are cached in chrome.storage.local per page (URL without hash),
 //   with least-recently-used eviction.
 //
@@ -45,6 +48,9 @@
     "[aria-hidden='true']", "[hidden]",
     "svg", "math", "code", "pre",
     "textarea", "input", "select", "option", "[contenteditable]",
+    "[role='textbox']", "[role='searchbox']", "[role='combobox']", "[role='listbox']",
+    "[role='menu']", "[role='tooltip']", "[role='tablist']",
+    "dialog", "[role='dialog']", "[role='alertdialog']",
     // Wikipedia UI chrome
     ".noprint", ".mw-editsection", ".mw-jump-link", ".reflist", ".catlinks",
     ".mw-pt-languages", ".vector-toc", "#toc", "#mw-navigation", "#mw-panel",
@@ -78,8 +84,16 @@
   // Live updates: a changed region must be quiet this long before (re)translating,
   // so streaming text is translated once it is complete rather than per token.
   const STABLE_MS = 1000;
+  const APP_STABLE_MS = 2000; // chat apps pause mid-answer (thinking, tool calls)
   const DIRTY_TICK_MS = 400;
-  const WATCHED_ATTRIBUTES = ["class", "style", "hidden", "open", "aria-hidden", "aria-expanded"];
+  const WATCHED_ATTRIBUTES = ["class", "style", "hidden", "open", "aria-hidden", "aria-expanded", "aria-busy", "data-is-streaming"];
+  // How AI chat sites mark an answer that is still being generated.
+  const STREAMING_SELECTOR = [
+    "[data-is-streaming='true']", "[data-streaming='true']", "[aria-busy='true']",
+    ".result-streaming", ".streaming",
+  ].join(",");
+  // Mount points of script-rendered apps (their nodes must not be moved).
+  const APP_ROOT_SELECTOR = "#root, #__next, #app, #__nuxt, #svelte, [data-reactroot], [ng-version], [data-v-app]";
 
   // A unit is { host, run }: `host` is the element observed for visibility;
   // `run` is null for a whole-element unit, or the list of loose inline nodes
@@ -136,6 +150,21 @@
 
   function isSkipped(el) {
     return SKIP_TAGS.has(el.tagName) || !!el.closest(SKIP_SELECTOR);
+  }
+
+  function isStreaming(node) {
+    const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+    return !!el && !!el.closest(STREAMING_SELECTOR);
+  }
+
+  let appPage = null;
+  function isAppPage() {
+    if (appPage === null) appPage = !!document.querySelector(APP_ROOT_SELECTOR);
+    return appPage;
+  }
+
+  function stableMs() {
+    return isAppPage() ? APP_STABLE_MS : STABLE_MS;
   }
 
   // A translation unit is the innermost block element that contains text: it has
@@ -520,13 +549,20 @@
     span.textContent = translation;
     span.lang = "zh-CN";
     if (settings.displayMode === "translation") span.title = source;
-    const entry = { span, source, sig: unitSig(unit), unitHost: unit.host, host: null, wrapper: null };
+    const entry = { span, source, sig: unitSig(unit), unitHost: unit.host, host: null, wrapper: null, run: null };
 
     withoutObserving(() => {
       if (unit.run) {
         const cs = getComputedStyle(unit.host);
         span.style.setProperty("--wt-fs", cs.fontSize);
         span.style.setProperty("--wt-lh", cs.lineHeight);
+        if (unit.live || isAppPage()) {
+          // Script-rendered page: moving its nodes into a wrapper would make the app's
+          // own updates throw. Translation-only mode then keeps this run's original.
+          unit.run[unit.run.length - 1].after(span);
+          entry.run = unit.run;
+          return;
+        }
         // Wrap the loose run so translation-only mode can hide it. The wrapper is
         // display:contents, so bilingual layout is unchanged.
         const wrapper = document.createElement("span");
@@ -575,7 +611,23 @@
   }
 
   function entrySig(entry) {
+    if (entry.run) return runSig(entry.run[0], entry.unitHost);
     return entry.wrapper ? textSig(entry.wrapper) : textSig(entry.unitHost);
+  }
+
+  // Text of the loose run that starts at `first` as the page has it now (the app may
+  // have added, removed or replaced nodes in it); "" when `first` left `host`.
+  function runSig(first, host) {
+    if (first.parentNode !== host) return "";
+    let out = "";
+    for (let n = first; n; n = n.nextSibling) {
+      if (n.nodeType === Node.TEXT_NODE) out += n.textContent;
+      else if (n.nodeType === Node.ELEMENT_NODE) {
+        if (n.classList.contains("web-translator-cn") || isSkipped(n) || isBlockElement(n)) break;
+        out += n.textContent;
+      }
+    }
+    return out.replace(/\s+/g, " ").trim();
   }
 
   function isLive(unit) {
@@ -662,6 +714,13 @@
       if (!isLive(unit)) {
         queue.shift();
         pending.delete(keyOf(unit));
+        continue;
+      }
+      if (isStreaming(unit.host)) {
+        // Still being generated: the live-update pass picks it up when it ends.
+        queue.shift();
+        pending.delete(keyOf(unit));
+        markDirty(unit.host, Date.now());
         continue;
       }
       const text = unitText(unit);
@@ -833,20 +892,30 @@
       }
       const el = blockAncestor(target);
       if (!el || !el.isConnected || isSkipped(el)) continue;
-      dirty.set(el, now);
+      markDirty(el, now);
     }
-    if (dirty.size && !dirtyTimer) dirtyTimer = setInterval(processDirty, DIRTY_TICK_MS);
+  }
+
+  function markDirty(el, now) {
+    dirty.set(el, now);
+    if (!dirtyTimer) dirtyTimer = setInterval(processDirty, DIRTY_TICK_MS);
   }
 
   function stillChanging(el, now) {
     const t = dirty.get(el);
-    return t !== undefined && now - t < STABLE_MS;
+    return t !== undefined && now - t < stableMs();
   }
 
   function processDirty() {
     const now = Date.now();
     const ready = [];
-    for (const [el, t] of dirty) if (now - t >= STABLE_MS) ready.push(el);
+    for (const [el, t] of dirty) {
+      if (now - t < stableMs()) continue;
+      // An answer still marked as streaming waits for the stream to end, however
+      // long the model pauses; the marker's removal is itself a mutation.
+      if (el.isConnected && isStreaming(el)) continue;
+      ready.push(el);
+    }
     for (const el of ready) dirty.delete(el);
     if (!dirty.size) {
       clearInterval(dirtyTimer);

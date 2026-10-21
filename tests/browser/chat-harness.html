@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Chat harness: streaming AI answers</title>
+    <!-- Run: node tests/browser/serve.mjs, then open
+         http://127.0.0.1:8791/tests/browser/chat-harness.html
+         A single-page chat app (no <main>/<article>, like several AI chat sites) whose
+         renderer keeps references to its DOM nodes and patches them the way React does,
+         streams an answer token by token with a long mid-answer pause, and has a
+         composer and a dialog. Runs the real background.js + content scripts against
+         the mocked chrome.*; results land in #results. -->
+    <link rel="stylesheet" href="/extension/content.css" />
+    <script src="/tests/browser/learn-chrome-mock.js"></script>
+    <style>
+      body { font: 16px/1.6 system-ui, sans-serif; margin: 0; color: #222; }
+      .layout { display: grid; grid-template-columns: 200px 1fr; min-height: 100vh; }
+      .sidebar { background: #f4f4f4; padding: 12px; }
+      .thread { padding: 16px 24px 120px; max-width: 720px; }
+      .msg { margin: 12px 0; }
+      .composer { position: fixed; bottom: 0; left: 200px; right: 0; padding: 12px 24px; background: #fff; border-top: 1px solid #ddd; display: flex; gap: 8px; }
+      .composer [contenteditable] { flex: 1; border: 1px solid #ccc; border-radius: 8px; padding: 8px; }
+      [role="dialog"] { position: fixed; top: 20px; right: 20px; width: 260px; background: #fff; border: 1px solid #ccc; padding: 12px; }
+      #results { font: 13px system-ui; position: fixed; top: 0; right: 300px; background: #ffffe8; max-width: 520px; z-index: 9; margin: 0; }
+      .pass { color: #186a3b; } .fail { color: #b03a2e; }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div class="layout">
+        <div class="sidebar">
+          <div class="chat-title">Planning a weekend trip</div>
+        </div>
+        <div class="thread" id="thread">
+          <div class="msg user"><div class="bubble">How should I pack for a short city trip?</div></div>
+        </div>
+      </div>
+      <div class="composer">
+        <div contenteditable="true" role="textbox" id="composer"><p>Ask a follow-up question about packing</p></div>
+        <button type="button">Send</button>
+      </div>
+      <div role="dialog" aria-label="Share" id="dialog"><h2>Share this conversation</h2><p>Anyone with the link can view this chat.</p></div>
+    </div>
+    <div aria-hidden="true"><ol id="results"></ol><p id="summary">running…</p></div>
+
+    <script src="/extension/content.js"></script>
+    <script src="/extension/content-learn.js"></script>
+    <script type="module">
+      import "/extension/background.js";
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const results = document.getElementById("results");
+      let failed = 0;
+      const check = (name, ok, detail = "") => {
+        if (!ok) failed++;
+        results.append(Object.assign(document.createElement("li"), { className: ok ? "pass" : "fail", textContent: `${ok ? "PASS" : "FAIL"} ${name}${detail ? ` — ${detail}` : ""}` }));
+      };
+      const until = async (fn, ms = 6000) => {
+        for (const t0 = Date.now(); Date.now() - t0 < ms; await sleep(50)) if (fn()) return true;
+        return !!fn();
+      };
+
+      // React-like renderer: keeps references to the nodes it created and patches
+      // them in place; throws (like React) when a node it owns was moved elsewhere.
+      const renderErrors = [];
+      const patch = (label, fn) => {
+        try {
+          fn();
+        } catch (err) {
+          renderErrors.push(`${label}: ${err.message}`);
+        }
+      };
+      // React's setTextContent: fast path only when the text node is the only child.
+      const setText = (el, text) => {
+        const first = el.firstChild;
+        if (first && first === el.lastChild && first.nodeType === Node.TEXT_NODE) first.nodeValue = text;
+        else el.textContent = text;
+      };
+
+      const thread = document.getElementById("thread");
+      const answer = document.createElement("div");
+      answer.className = "msg assistant";
+      const md = document.createElement("div");
+      md.className = "markdown";
+      answer.append(md);
+
+      // Paragraph 1 streams, pauses ("thinking"), then finishes.
+      const p1Text = "Pack light and choose clothes that you can wear more than once during the trip.";
+      const p2Text = "A small backpack is usually enough for two or three days in a city.";
+      // A list item with loose text next to a nested list (a translation "run").
+      const li = document.createElement("li");
+      const liText = document.createTextNode("Bring comfortable shoes ");
+      const liStrong = document.createElement("strong");
+      liStrong.textContent = "for walking";
+      const liTail = document.createTextNode(" because you will explore on foot.");
+      const nested = document.createElement("ul");
+      nested.innerHTML = "<li>Waterproof shoes help when it rains.</li>";
+      li.append(liText, liStrong, liTail, nested);
+      const ul = document.createElement("ul");
+      ul.append(li);
+
+      await sleep(300);
+      await chrome.tabs.sendMessage(1, { type: "web-translator:translate-page" });
+      await sleep(300);
+
+      // The question already on the page is translated.
+      check("existing message is translated", await until(() => !!document.querySelector(".msg.user .web-translator-cn")));
+
+      // --- stream the answer ---
+      thread.append(answer);
+      answer.dataset.isStreaming = "true";
+      const p1 = document.createElement("p");
+      md.append(p1);
+      const words = p1Text.split(" ");
+      const half = Math.floor(words.length / 2);
+      for (let i = 1; i <= half; i++) {
+        patch("stream p1", () => setText(p1, words.slice(0, i).join(" ")));
+        await sleep(40);
+      }
+      // Long pause mid-sentence, as when the model thinks or calls a tool.
+      await sleep(2200);
+      const partialSent = window.__translateCalls.flat().some((t) => t.startsWith("Pack light") && t !== p1Text);
+      check("a paused, half-written paragraph is not translated", !partialSent && !p1.querySelector(".web-translator-cn"));
+      for (let i = half + 1; i <= words.length; i++) {
+        patch("stream p1", () => setText(p1, words.slice(0, i).join(" ")));
+        await sleep(40);
+      }
+      const p2 = document.createElement("p");
+      patch("append p2", () => md.insertBefore(p2, null));
+      for (const w of p2Text.split(" ")) {
+        patch("stream p2", () => setText(p2, (p2.firstChild?.nodeValue ? p2.firstChild.nodeValue + " " : "") + w));
+        await sleep(40);
+      }
+      patch("append list", () => md.insertBefore(ul, null));
+      await sleep(200);
+      answer.dataset.isStreaming = "false";
+
+      check("finished paragraphs are translated", await until(() => p1.querySelector(".web-translator-cn") && p2.querySelector(".web-translator-cn")));
+      check("list item text next to a nested list is translated", await until(() => [...li.children].some((c) => c.classList.contains("web-translator-cn")) || !!li.querySelector(":scope > .web-translator-cn")));
+      const sentP1 = window.__translateCalls.flat().filter((t) => t.startsWith("Pack light"));
+      check("each finished paragraph is sent once", sentP1.length === 1, JSON.stringify(sentP1));
+
+      // --- the app re-renders the answer (e.g. markdown re-parse after streaming) ---
+      patch("li: drop <strong>", () => li.removeChild(liStrong));
+      patch("li: insert <em> before nested list", () => {
+        const em = document.createElement("em");
+        em.textContent = "while walking";
+        li.insertBefore(em, nested);
+      });
+      patch("li: update tail text", () => (liTail.nodeValue = " since you will explore the city on foot."));
+      patch("p2: re-render text", () => setText(p2, p2Text + " Leave room for souvenirs."));
+      check("the app's own DOM updates never fail", renderErrors.length === 0, renderErrors.join("; "));
+      check("changed paragraph is re-translated", await until(() => window.__translateCalls.flat().some((t) => t.endsWith("souvenirs.")) && !!p2.querySelector(".web-translator-cn")));
+
+      // Translation-only mode must not move the app's nodes either.
+      await chrome.storage.sync.set({ displayMode: "translation" });
+      await sleep(400);
+      patch("li: remove text node (translation-only)", () => li.removeChild(liText));
+      check("translation-only mode keeps the app's nodes in place", renderErrors.length === 0, renderErrors.join("; "));
+      await chrome.storage.sync.set({ displayMode: "bilingual" });
+
+      // --- UI that is not content ---
+      check("composer (contenteditable) is untouched", !document.getElementById("composer").querySelector(".web-translator-cn, .web-translator-spinner"));
+      check("dialog is untouched", !document.getElementById("dialog").querySelector(".web-translator-cn"));
+
+      // Nothing keeps re-translating once the page is quiet.
+      await sleep(2600);
+      const calls = window.__translateCalls.length;
+      await sleep(3000);
+      check("no re-translation loop once the page is quiet", window.__translateCalls.length === calls, `${calls} → ${window.__translateCalls.length}`);
+
+      document.getElementById("summary").textContent = failed ? `${failed} FAILED` : "ALL PASSED";
+    </script>
+  </body>
+</html>
