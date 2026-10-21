@@ -163,3 +163,18 @@ export function highlightTarget(sentence, target) {
   const i = s.toLowerCase().indexOf(t.toLowerCase());
   return i < 0 ? s : `${s.slice(0, i)}<b>${s.slice(i, i + t.length)}</b>${s.slice(i + t.length)}`;
 }
+
+/**
+ * Idempotency key for saving `text` from the page at `url`: the same page and
+ * sentence always give the same key (saving twice is a no-op), and it stays far
+ * below the store's 100-character limit however long the URL or sentence is.
+ */
+export function sentenceKey(url, text) {
+  const hash = (str, seed) => {
+    let h = seed >>> 0;
+    for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 0x01000193) >>> 0;
+    return h.toString(16).padStart(8, "0");
+  };
+  const both = `${url}\n${text}`;
+  return `sentence:${hash(both, 0x811c9dc5)}${hash(both, 0x9747b28c)}:${text.length}`;
+}

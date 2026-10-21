@@ -10,7 +10,7 @@ import { IdbDictionary, importPackage, removeDictionary } from "../../extension/
 import { ankiTsv } from "../../extension/learning/export.js";
 import { LEVEL_DAYS, nextState, newState, replay } from "../../extension/learning/scheduler.js";
 import { LearningStore, MAX_ENCOUNTERS, ValidationError } from "../../extension/learning/store.js";
-import { classifySelection, cleanSourceUrl, guessLemmas, sentenceAround } from "../../extension/learning/text.js";
+import { classifySelection, cleanSourceUrl, guessLemmas, sentenceAround, sentenceKey } from "../../extension/learning/text.js";
 
 const MIN = 60 * 1000;
 const DAY = 24 * 60 * MIN;
@@ -425,4 +425,19 @@ test("Anki TSV escapes tabs, newlines and HTML and marks the target", () => {
   assert.match(fields[3], /<br>/);
   assert.match(fields[4], /X &amp; Y/);
   assert.equal(fields[5], "localingo exam_prep");
+});
+
+test("sentence keys are stable, distinct and short enough for the store", async () => {
+  const url = "https://example.com/article?" + "q=very-long-tracking-parameter&".repeat(20);
+  const text = "A sentence worth keeping, saved from a page with a very long address.";
+  const key = sentenceKey(url, text);
+  assert.ok(key.length <= 100, key);
+  assert.equal(sentenceKey(url, text), key);
+  assert.notEqual(sentenceKey(url, text + "!"), key);
+  assert.notEqual(sentenceKey(url + "x", text), key);
+  const store = new LearningStore({ dbName: `t-sentkey-${Math.random()}` });
+  const first = await store.saveSentence({ idempotency_key: key, text, url });
+  const again = await store.saveSentence({ idempotency_key: key, text, url });
+  assert.equal(again.result, "already_exists");
+  assert.ok(first.result !== "already_exists");
 });

@@ -334,9 +334,10 @@
   }
 
   async function saveSentence(text) {
+    const { text: textMod } = await loadModules();
     const resp = await send({
       type: "learning:save-sentence",
-      payload: { idempotency_key: `${location.href}::${text}`.slice(0, 100) + `:${text.length}`, text: text.slice(0, 1200), url: location.href, title: document.title.slice(0, 300) },
+      payload: { idempotency_key: textMod.sentenceKey(location.href, text), text: text.slice(0, 1200), url: location.href, title: document.title.slice(0, 300) },
     });
     const toast = globalThis.__localingoCore?.showToast;
     if (toast) toast(resp.ok ? (resp.result === "already_exists" ? "这句已经收藏过了" : "已收藏句子，可在学习中心查看") : `收藏失败：${resp.error}`, resp.ok ? "success" : "error");
