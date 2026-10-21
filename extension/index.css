@@ -119,6 +119,13 @@ figcaption { display: flex; align-items: center; gap: 8px; border-top: 1px solid
 .step-number { color: var(--accent); font-size: 11px; letter-spacing: 1.5px; }
 .steps h3 { margin-top: 18px; font-size: 20px; font-weight: 600; letter-spacing: -.6px; }
 .steps p { margin-top: 10px; font-size: 14px; color: var(--muted); line-height: 1.8; }
+.install { padding-block: 24px 96px; }
+.install-command { display: flex; align-items: center; gap: 16px; margin-top: 40px; padding: 14px 14px 14px 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: var(--shadow); }
+.install-command code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; font: 15px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.install-command .button { flex: none; }
+.install .steps b { color: var(--ink); font-weight: 600; }
+.install-more { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px 28px; margin-top: 36px; font-size: 12px; color: var(--muted); }
+.install-more code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink); }
 .ownership { display: grid; grid-template-columns: 1fr 1fr; gap: 70px; padding: 48px; border: 1px solid var(--line); border-radius: 14px; background: var(--soft); }
 .ownership h2 { margin-top: 18px; }
 .ownership-copy { max-width: 350px; font-size: 14px; color: var(--muted); margin: 20px 0; }
@@ -162,6 +169,9 @@ footer p, footer > a:last-child { color: var(--muted); font-size: 12px; text-dec
   .ownership { grid-template-columns: 1fr; gap: 30px; }
   .ownership-copy { max-width: none; }
   .closing { padding-block: 64px; }
+  .install { padding-block: 0 60px; }
+  .install-command { padding: 12px 12px 12px 16px; gap: 10px; }
+  .install-command code { font-size: 13px; }
   footer p { order: 3; width: 100%; }
 }
 @media (max-width: 400px) {

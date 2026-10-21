@@ -21,6 +21,8 @@ class Settings:
     data_dir: Path = field(default_factory=lambda: Path(os.environ.get("LOCALINGO_DATA", REPO_ROOT / "data" / "server")))
     web_root: Path = field(default_factory=lambda: Path(os.environ.get("LOCALINGO_WEB_ROOT", REPO_ROOT / "extension")))
     dict_dir: Path = field(default_factory=lambda: Path(os.environ.get("LOCALINGO_DICT_DIR", REPO_ROOT / "data" / "dist")))
+    # One-click installer downloads (built by scripts/build_release.sh).
+    release_dir: Path = field(default_factory=lambda: Path(os.environ.get("LOCALINGO_RELEASE_DIR", REPO_ROOT / "data" / "release")))
     dict_variant: str = field(default_factory=lambda: os.environ.get("LOCALINGO_DICT_VARIANT", "base"))
     allow_signup: bool = field(default_factory=lambda: _bool("LOCALINGO_ALLOW_SIGNUP"))
     admin_user: str = field(default_factory=lambda: os.environ.get("LOCALINGO_ADMIN_USER", ""))

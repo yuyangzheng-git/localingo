@@ -41,7 +41,12 @@ def settings(tmp_path):
     (web / "learn" / "learn.js").write_text("console.log(1)")
     (web / "manifest.json").write_text("{}")
     (tmp_path / "secret.txt").write_text("nope")
-    return Settings(data_dir=tmp_path / "data", web_root=web, dict_dir=dist, dict_variant="base",
+    release = tmp_path / "release"
+    release.mkdir()
+    (release / "install.sh").write_text("#!/bin/bash\necho hi\n")
+    (release / "localingo-extension.zip").write_bytes(b"PK")
+    (release / "other.zip").write_bytes(b"PK")
+    return Settings(data_dir=tmp_path / "data", web_root=web, dict_dir=dist, release_dir=release, dict_variant="base",
                     allow_signup=False, admin_user="alice", admin_password=PASSWORD, cors_origins=[], token_days=30)
 
 
@@ -223,3 +228,14 @@ def test_cors_allows_extensions_only(client):
     assert ok.headers.get("access-control-allow-origin") == ext
     bad = client.options("/api/sync/push", headers={"Origin": "https://evil.example", **pre})
     assert "access-control-allow-origin" not in bad.headers
+
+
+def test_install_downloads(client):
+    r = client.get("/install.sh")
+    assert r.status_code == 200 and r.text.startswith("#!/bin/bash")
+    assert r.headers["content-type"].startswith("text/plain")
+    z = client.get("/download/localingo-extension.zip")
+    assert z.status_code == 200 and z.headers["content-type"] == "application/zip"
+    assert client.get("/download/localingo-translator.tar.gz").status_code == 404  # not built
+    assert client.get("/download/other.zip").status_code == 404
+    assert client.get("/download/..%2Fsecret.txt").status_code == 404

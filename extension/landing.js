@@ -76,6 +76,32 @@
     reveals.forEach(function (el) { el.classList.add("is-in"); });
     if (demoEl) demoEl.classList.add("is-ready");
   }
+  /* ── Install command: this site's address + copy button ──────────── */
+  var cmd = document.getElementById("install-cmd");
+  var copy = document.getElementById("install-copy");
+  if (cmd && /^https?:$/.test(location.protocol)) {
+    cmd.textContent = "curl -fsSL " + location.origin + "/install.sh | bash";
+  }
+  if (cmd && copy) {
+    copy.addEventListener("click", function () {
+      var done = function (text) {
+        copy.textContent = text;
+        setTimeout(function () { copy.textContent = "Copy"; }, 1800);
+      };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(cmd.textContent).then(function () { done("Copied"); }, function () { done("Select & copy"); });
+      } else {
+        // Plain-http pages have no async clipboard: select the text for ⌘C.
+        var range = document.createRange();
+        range.selectNodeContents(cmd);
+        var sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        done(document.execCommand && document.execCommand("copy") ? "Copied" : "Press ⌘C");
+      }
+    });
+  }
+
   if (reduceMotion || !("IntersectionObserver" in window)) {
     showAll();
   } else {

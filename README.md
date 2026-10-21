@@ -97,7 +97,25 @@ elements, translates each one as a whole from its plain text, and appends the
 Chinese below the untouched original. Navigation, controls, code, and
 hidden/accessibility text are skipped.
 
-## Setup
+## Install (one command)
+
+On an Apple Silicon Mac with Chrome:
+
+```bash
+curl -fsSL http://101.35.6.63:8083/install.sh | bash
+```
+
+It installs the translation service into `~/Library/Application Support/LocaLingo`
+(a LaunchAgent starts it at login), downloads the model once (via `hf-mirror.com` when
+Hugging Face is unreachable), and puts the extension in `~/LocaLingo/chrome-extension`.
+Load that folder once in `chrome://extensions` (Developer mode → Load unpacked). Re-run
+the command to update; add `-s -- --uninstall` after `bash` to remove it. Logs:
+`~/Library/Logs/LocaLingo/translator.log`.
+
+The downloads are built with `scripts/build_release.sh` into `data/release/`, which the
+LocaLingo server serves at `/install.sh` and `/download/…` (`LOCALINGO_RELEASE_DIR`).
+
+## Setup (development)
 
 Requires Python 3.12+ and an Apple Silicon Mac, managed with [uv](https://docs.astral.sh/uv/).
 
@@ -120,9 +138,8 @@ uv run mlx_lm.convert --hf-path ZachacyZ/qwen3-1.7b-web-v3a-merged -q --q-bits 4
 uv run web-translator
 ```
 
-Starts the server on `http://127.0.0.1:8765` and prints an **auth token**. On first
-run the token is generated randomly and saved to `~/.config/localingo/token`, so it
-stays the same across restarts. The model loads lazily on the first request (the
+Starts the server on `http://127.0.0.1:8765`. There is no token: it only translates
+requests from Chrome extensions (see below). The model loads lazily on the first request (the
 first translation is slow; later ones are fast). Keep the server running while you browse.
 
 ## Load the extension
@@ -130,7 +147,6 @@ first translation is slow; later ones are fast). Keep the server running while y
 1. Open `chrome://extensions`.
 2. Enable **Developer mode** (top-right).
 3. Click **Load unpacked** and select the `extension/` directory.
-4. Click the extension icon and paste the token printed by the server into **Auth token**.
 
 ## Configuration
 
@@ -139,19 +155,19 @@ first translation is slow; later ones are fast). Keep the server running while y
 | `WEB_TRANSLATOR_MODEL` | `~/models/qwen3-1.7b-web-v3a-mlx`, else `ZachacyZ/qwen3-1.7b-web-v3a-merged` | Model id or local path to load (a custom Qwen3-1.7B translation fine-tune) |
 | `WEB_TRANSLATOR_ADAPTER` | *(none)* | Local path to a LoRA adapter dir (`adapter_config.json` + safetensors) to load on top of the model |
 | `WEB_TRANSLATOR_PORT` | `8765` | Server port |
-| `WEB_TRANSLATOR_TOKEN` | *(random, from the token file)* | Override the shared auth token (paste the same value into the popup) |
-| `WEB_TRANSLATOR_TOKEN_FILE` | `~/.config/localingo/token` | Where the generated token is stored |
 
-The server binds to `127.0.0.1` only. CORS only allows `chrome-extension://` origins, and
-every `/translate` call needs the per-machine token, so other websites open in your
-browser can't drive your local model.
+The server binds to `127.0.0.1` only. `/translate` requires a `chrome-extension://`
+`Origin` header (browsers always send it on a POST and web pages can't forge it) and a
+loopback `Host` (blocks DNS rebinding), so other websites open in your browser can't
+drive your local model. Programs running on your Mac can — as they could read a token
+file.
 
 ## API
 
-- `GET /health` — `{"status": "ok", "model": "...", "loaded": false, "authorized": false}`
-  (`authorized` is true when a valid `X-Auth-Token` header is sent)
+- `GET /health` — `{"status": "ok", "model": "...", "loaded": false, "authorized": true}`
+  (`authorized` is always true; token-era servers answer false and the popup asks to update)
 - `POST /translate` — body `{"texts": ["...", "..."]}` → `{"translations": ["...", "..."]}`
-  (requires `X-Auth-Token` header; at most 64 texts of up to 4000 characters each)
+  (403 unless sent by a Chrome extension; at most 64 texts of up to 4000 characters each)
 
 ## Model
 
