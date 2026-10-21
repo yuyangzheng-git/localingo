@@ -6,6 +6,7 @@
 import { lookup } from "./learning/dict.js";
 import { IdbDictionary, importPackage } from "./learning/dict-idb.js";
 import { DEFAULT_PREFS, normalizePrefs } from "./learning/prefs.js";
+import { fitKey } from "./learning/text.js";
 import { LearningStore, ValidationError } from "./learning/store.js";
 import { ACCOUNT_SERVER, ApiClient, syncOnce } from "./learning/sync.js";
 
@@ -259,6 +260,13 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
 // --- messages -----------------------------------------------------------------------
 
+// Pages opened before an update still run the previous content script, whose keys
+// could exceed the store's limit: shorten them here instead of failing the save.
+function withFittedKey(payload) {
+  const p = payload && typeof payload === "object" ? payload : {};
+  return typeof p.idempotency_key === "string" ? { ...p, idempotency_key: fitKey(p.idempotency_key) } : p;
+}
+
 async function requireAccount() {
   const { syncToken } = await syncSettings();
   if (!syncToken) throw new ValidationError("请先登录 LocaLingo 账号（学习中心）再收藏，查词和翻译不需要登录");
@@ -268,14 +276,14 @@ const LEARNING_HANDLERS = {
   "learning:lookup": (m) => handleLookup(m),
   "learning:save": async (m) => {
     await requireAccount();
-    const r = await store.saveItem(m.payload || {});
+    const r = await store.saveItem(withFittedKey(m.payload));
     scheduleSync();
     return r;
   },
   "learning:undo": (m) => handleUndo(m),
   "learning:save-sentence": async (m) => {
     await requireAccount();
-    const r = await store.saveSentence(m.payload || {});
+    const r = await store.saveSentence(withFittedKey(m.payload));
     scheduleSync();
     return r;
   },

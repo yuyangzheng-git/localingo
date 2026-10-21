@@ -10,7 +10,7 @@ import { IdbDictionary, importPackage, removeDictionary } from "../../extension/
 import { ankiTsv } from "../../extension/learning/export.js";
 import { LEVEL_DAYS, nextState, newState, replay } from "../../extension/learning/scheduler.js";
 import { LearningStore, MAX_ENCOUNTERS, ValidationError } from "../../extension/learning/store.js";
-import { classifySelection, cleanSourceUrl, guessLemmas, sentenceAround, sentenceKey } from "../../extension/learning/text.js";
+import { classifySelection, cleanSourceUrl, guessLemmas, sentenceAround, sentenceKey, fitKey } from "../../extension/learning/text.js";
 
 const MIN = 60 * 1000;
 const DAY = 24 * 60 * MIN;
@@ -440,4 +440,12 @@ test("sentence keys are stable, distinct and short enough for the store", async 
   const again = await store.saveSentence({ idempotency_key: key, text, url });
   assert.equal(again.result, "already_exists");
   assert.ok(first.result !== "already_exists");
+});
+
+test("over-long idempotency keys are shortened stably", () => {
+  const long = "https://example.com/" + "x".repeat(200) + "::A sentence";
+  assert.equal(fitKey("short-key"), "short-key");
+  assert.ok(fitKey(long).length <= 100);
+  assert.equal(fitKey(long), fitKey(long));
+  assert.notEqual(fitKey(long), fitKey(long + "!"));
 });
