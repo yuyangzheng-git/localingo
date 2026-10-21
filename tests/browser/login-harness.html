@@ -48,7 +48,7 @@
 
       await go("#lookup");
       check("signed out: lookup page stays open", visible("page-lookup") && !visible("page-login"));
-      check("signed out: offline dictionary panel is on the lookup page", !$("dictStatus").closest("section").hidden && /尚未安装|已安装/.test($("dictStatus").textContent), $("dictStatus").textContent);
+      check("signed out: offline dictionary panel is on the lookup page", !$("dictStatus").closest("section").hidden && /自动|已安装/.test($("dictStatus").textContent), $("dictStatus").textContent);
 
       const save = await w.chrome.runtime.sendMessage({ type: "learning:save", payload: {} });
       check("signed out: saving from a web page is refused", save.ok === false && /登录/.test(save.error), save.error);
