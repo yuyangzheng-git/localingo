@@ -2,8 +2,8 @@
 
 Syncs your vocabulary book, saved sentences and review history between the Chrome
 extension and a hosted learning web app, and serves the offline dictionary package.
-It is a small FastAPI + SQLite service meant for one person or a few accounts on your
-own VPS.
+It is a small FastAPI service meant for one person or a few accounts on your
+own VPS. Storage is SQLite by default, or MySQL when `LOCALINGO_MYSQL_URL` is set.
 
 What it stores: the records you save (words/phrases with the sense you chose, the
 sentence you saw them in and its source link, notes, tags, review events). It never
@@ -54,6 +54,7 @@ Self-service sign-up is off; set `LOCALINGO_ALLOW_SIGNUP=true` to allow it.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `LOCALINGO_DATA` | `/data` | SQLite databases (accounts + records, dictionary index) |
+| `LOCALINGO_MYSQL_URL` | — | e.g. `mysql://user:pass@host:3306/localingo`; when set, accounts and sync records live in MySQL instead of SQLite (the dictionary index stays a local SQLite file) |
 | `LOCALINGO_BIND` | `127.0.0.1` | Host address the container port is published on (`0.0.0.0` to expose directly) |
 | `LOCALINGO_PORT` | `8080` | Host port the web app is published on |
 | `LOCALINGO_DICT_VARIANT` | `base` | Dictionary package used by the web app's lookups (`base` or `full`) |
