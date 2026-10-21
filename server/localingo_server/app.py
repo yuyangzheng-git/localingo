@@ -19,7 +19,7 @@ from .dictionary import Dictionary
 log = logging.getLogger("localingo")
 
 # Files of the extension that make up the hosted web app (nothing else is served).
-WEB_FILES = {"index.html", "index.css", "learn.html", "landing.js"}
+WEB_FILES = {"index.html", "index.css", "learn.html", "landing.js", "privacy.html"}
 WEB_DIRS = {"learn", "learning", "icons"}
 # One-click installer downloads, served from settings.release_dir.
 RELEASE_FILES = {

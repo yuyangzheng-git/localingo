@@ -137,6 +137,15 @@ dd { color: var(--muted); font-size: 13px; line-height: 1.8; margin-top: 6px; }
 .closing h2 { margin-top: 18px; }
 .closing .button { margin-top: 28px; }
 .closing > p:last-child { margin-top: 16px; font-size: 12px; color: var(--muted); }
+.legal { max-width: 760px; padding-block: 24px 80px; }
+.legal h1 { font-size: clamp(36px, 5vw, 52px); margin-top: 0; }
+.legal-date { color: var(--muted); font-size: 13px; margin-top: 8px; }
+.legal h2 { font-size: 20px; font-weight: 600; margin-top: 36px; }
+.legal p, .legal li { color: var(--muted); font-size: 15px; line-height: 1.8; margin-top: 10px; }
+.legal ul { padding-left: 1.2em; margin: 8px 0 0; }
+.legal b { color: var(--ink); font-weight: 600; }
+.legal code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+footer p a { color: inherit; }
 footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px solid var(--line); padding-block: 28px; }
 footer .brand { font-size: 18px; }
 footer p, footer > a:last-child { color: var(--muted); font-size: 12px; text-decoration: none; }
