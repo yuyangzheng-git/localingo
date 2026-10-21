@@ -366,13 +366,23 @@ async function init() {
 }
 // --- vocabulary & review ---------------------------------------------------------
 
+function dictLabel(dictionary, progress) {
+  if (dictionary) return "离线词典已安装";
+  if (progress?.state === "error") return "词典安装失败，稍后自动重试";
+  if (progress?.state === "importing" && progress.total)
+    return `词典安装中 ${Math.round((progress.done / progress.total) * 100)}%`;
+  return "词典下载中…";
+}
+
 async function refreshLearning() {
   try {
     const resp = await chrome.runtime.sendMessage({ type: "learning:summary" });
     if (!resp?.ok) return;
     $("reviewCount").textContent = String(resp.summary.today_total);
     $("openReview").setAttribute("aria-label", `今日复习 ${resp.summary.today_total} 条`);
-    $("dictState").textContent = resp.dictionary ? "离线词典已安装" : "尚未安装词典";
+    $("dictState").textContent = dictLabel(resp.dictionary, resp.dictInstall);
+    // The background installs the dictionary on its own; follow its progress.
+    if (!resp.dictionary && resp.dictInstall?.state !== "error") setTimeout(refreshLearning, 1500);
   } catch {
     /* service worker unavailable; keep placeholders */
   }

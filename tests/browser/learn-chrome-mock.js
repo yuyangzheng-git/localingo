@@ -133,7 +133,12 @@
       if (path === "/api/auth/logout") return new Response(null, { status: 204 });
       if (path === "/api/sync/push") return json({ accepted: 0 });
       if (path === "/api/sync/pull") return json({ changes: {}, cursor: 0, more: false });
-      if (path === "/api/dict/info") return json({ packages: [] });
+      // Dictionary packages come from the repository's data/dist (see docs/DICTIONARY.md).
+      if (path === "/api/dict/info") {
+        const manifest = await realFetch("/data/dist/localingo-dict-ecdict-base-bc015ed.json").then((r) => (r.ok ? r.json() : null)).catch(() => null);
+        return json({ packages: manifest ? [manifest] : [] });
+      }
+      if (path.startsWith("/api/dict/packages/")) return realFetch("/data/dist/" + path.split("/").pop());
       return json({ detail: "not found" }, 404);
     }
     return realFetch(url, opts);

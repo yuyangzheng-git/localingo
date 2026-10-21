@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Offline dictionary auto-install checks</title>
+    <!-- Run: node tests/browser/serve.mjs, then open (in a fresh browser profile, so no
+         dictionary is installed yet)
+         http://127.0.0.1:8791/tests/browser/dict-harness.html
+         The extension installs the base dictionary by itself on install; the fake
+         account server serves data/dist/. Results land in #results. -->
+    <style>
+      body { font: 14px system-ui; margin: 16px; }
+      iframe { width: 1000px; height: 560px; border: 1px solid #ccc; }
+      .pass { color: #186a3b; } .fail { color: #b03a2e; }
+    </style>
+  </head>
+  <body>
+    <ol id="results"></ol>
+    <p id="summary">running…</p>
+    <iframe id="app" src="/extension/learn.html?harness#lookup"></iframe>
+    <script type="module">
+      const frame = document.getElementById("app");
+      const results = document.getElementById("results");
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      let failed = 0;
+      const check = (name, ok, detail = "") => {
+        if (!ok) failed++;
+        results.append(Object.assign(document.createElement("li"), { className: ok ? "pass" : "fail", textContent: `${ok ? "PASS" : "FAIL"} ${name}${detail ? ` — ${detail}` : ""}` }));
+      };
+      const until = async (fn, ms) => {
+        for (const t0 = Date.now(); Date.now() - t0 < ms; await sleep(200)) if (await fn()) return true;
+        return !!(await fn());
+      };
+      await new Promise((r) => frame.addEventListener("load", r, { once: true }));
+      const w = frame.contentWindow;
+      const send = (m) => w.chrome.runtime.sendMessage(m);
+      await sleep(500);
+
+      const before = await send({ type: "learning:lookup", query: "bank" });
+      check("a lookup before the dictionary is ready says it is installing", before.ok && before.lookup.status === "no-dictionary" && before.lookup.installing === true, JSON.stringify(before.lookup?.status));
+      check("the lookup page shows the automatic install", /自动/.test(w.document.getElementById("dictStatus").textContent), w.document.getElementById("dictStatus").textContent);
+
+      const t0 = performance.now();
+      const done = await until(async () => (await send({ type: "learning:summary" })).dictionary, 90000);
+      check("the base dictionary installs by itself", done, `${Math.round(performance.now() - t0)} ms`);
+      const after = await send({ type: "learning:lookup", query: "banks" });
+      check("lookups work offline afterwards", after.ok && after.lookup.status !== "no-dictionary" && after.lookup.results.some((r) => r.entry.k === "bank"), after.lookup?.status);
+      const { dictInstall } = await w.chrome.storage.local.get("dictInstall");
+      check("progress ends as done", dictInstall?.state === "done", JSON.stringify(dictInstall));
+      check("the lookup page shows it installed", await until(() => /已安装/.test(w.document.getElementById("dictStatus").textContent), 5000), w.document.getElementById("dictStatus").textContent);
+      const again = await send({ type: "learning:install-dictionary" });
+      check("asking again does not reinstall", again.ok && again.installed === false, JSON.stringify(again));
+
+      document.getElementById("summary").textContent = failed ? `${failed} FAILED` : "ALL PASSED";
+    </script>
+  </body>
+</html>

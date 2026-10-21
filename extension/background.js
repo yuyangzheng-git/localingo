@@ -4,7 +4,7 @@
 // no account; saving to the vocabulary book needs a signed-in LocaLingo account.
 
 import { lookup } from "./learning/dict.js";
-import { IdbDictionary } from "./learning/dict-idb.js";
+import { IdbDictionary, importPackage } from "./learning/dict-idb.js";
 import { DEFAULT_PREFS, normalizePrefs } from "./learning/prefs.js";
 import { LearningStore, ValidationError } from "./learning/store.js";
 import { ACCOUNT_SERVER, ApiClient, syncOnce } from "./learning/sync.js";
@@ -55,9 +55,57 @@ async function getPrefs() {
   return normalizePrefs(learnPrefs);
 }
 
+// --- offline dictionary: installed automatically ----------------------------------
+
+// The base package (~8 MB, 149k entries) is downloaded from the LocaLingo server on
+// install and whenever it is missing; the full one stays a choice in the learning
+// center. Progress goes to storage.local "dictInstall" ({state, done, total, error})
+// for the popup and learning center — and each write keeps the worker alive.
+let dictInstall = null;
+
+function ensureDictionary() {
+  if (dictInstall) return dictInstall;
+  dictInstall = (async () => {
+    if (await dictionary.info()) return { ok: true, installed: false };
+    const report = (state) => chrome.storage.local.set({ dictInstall: { at: Date.now(), ...state } });
+    try {
+      await report({ state: "downloading" });
+      const api = new ApiClient({ baseUrl: ACCOUNT_SERVER, timeoutMs: 120000 });
+      const { packages = [] } = await api.get("/api/dict/info");
+      const pkg = packages.find((p) => p.variant === "base") || packages[0];
+      if (!pkg) throw new Error("服务器上没有词典包");
+      const resp = await fetch(`${ACCOUNT_SERVER}/api/dict/packages/${encodeURIComponent(pkg.file)}`, { credentials: "omit" });
+      if (!resp.ok) throw new Error(`下载词典失败（${resp.status}）`);
+      const buffer = await resp.arrayBuffer();
+      let last = 0;
+      await importPackage(buffer, {
+        expectedSha256: pkg.sha256,
+        onProgress: ({ phase, done, total }) => {
+          if (Date.now() - last < 1000) return;
+          last = Date.now();
+          report({ state: phase === "import" ? "importing" : phase, done, total });
+        },
+      });
+      await report({ state: "done" });
+      return { ok: true, installed: true };
+    } catch (err) {
+      await report({ state: "error", error: err?.message || String(err) });
+      return { ok: false, error: err?.message || String(err) };
+    } finally {
+      dictInstall = null;
+    }
+  })();
+  return dictInstall;
+}
+
 async function handleLookup({ query }) {
   if (typeof query !== "string" || !query.trim()) throw new ValidationError("没有要查询的内容");
   const result = await lookup(query, dictionary);
+  if (result.status === "no-dictionary") {
+    // First lookups right after installing: tell the card it is on its way.
+    ensureDictionary();
+    result.installing = true;
+  }
   const keys = [...new Set(result.results.map((r) => r.entry.k))];
   const saved = keys.length ? await store.itemsForLexemes(keys) : [];
   const info = await dictionary.info();
@@ -170,11 +218,13 @@ chrome.runtime.onInstalled.addListener(async ({ reason }) => {
     if (!displayMode) await chrome.storage.sync.set({ displayMode: "learn" });
   }
   chrome.alarms?.create(SYNC_ALARM, { periodInMinutes: 30 });
+  ensureDictionary();
   chrome.sidePanel?.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => {});
 });
 
 chrome.runtime.onStartup.addListener(() => {
   chrome.alarms?.create(SYNC_ALARM, { periodInMinutes: 30 });
+  ensureDictionary(); // an earlier attempt may have failed offline
   syncNow().catch(() => {});
 });
 
@@ -237,10 +287,14 @@ const LEARNING_HANDLERS = {
   "learning:voices": async () => ({ voices: await englishVoices() }),
   "learning:summary": async () => {
     const prefs = await getPrefs();
-    return { summary: await store.reviewSummary({ dailyNew: prefs.dailyNew }), dictionary: await dictionary.info().then((m) => (m ? { package_id: m.package_id, entries: m.entries } : null)) };
+    const dict = await dictionary.info();
+    if (!dict) ensureDictionary();
+    const { dictInstall: progress = null } = dict ? {} : await chrome.storage.local.get("dictInstall");
+    return { summary: await store.reviewSummary({ dailyNew: prefs.dailyNew }), dictionary: dict ? { package_id: dict.package_id, entries: dict.entries } : null, dictInstall: progress };
   },
   "learning:page-items": async (m) => ({ items: await store.itemsForPage(String(m.url || "")) }),
   "learning:sync-now": () => syncNow(),
+  "learning:install-dictionary": () => ensureDictionary(),
   "learning:changed": async () => {
     scheduleSync();
     return { ok: true };

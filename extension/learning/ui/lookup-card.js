@@ -43,6 +43,7 @@ export function renderLookupCard(root, model, handlers = {}) {
       card.append(header(model.query || ""), h("div", { class: "ll-skeleton", "aria-busy": "true" }, h("i"), h("i"), h("i")));
       return;
     }
+    if (lookup.status === "no-dictionary" && lookup.installing) return renderMessage("离线词典正在自动安装", "第一次使用会下载约 8 MB 的词典，通常十几秒完成，稍后再查一次即可。");
     if (lookup.status === "no-dictionary") return renderMessage("尚未安装离线词典", "安装后即可在本机查词，不需要联网或启动翻译服务。", handlers.installDictionary && h("button", { class: "ll-btn ll-primary", onclick: handlers.installDictionary }, "安装词典"));
     if (lookup.status === "unsupported") return renderUnsupported(lookup);
     if (lookup.status === "not-found") return renderNotFound(lookup);

@@ -220,8 +220,9 @@ A Qwen LoRA adapter can alternatively be loaded unmerged via
      --license data/upstream/ECDICT-LICENSE.txt --commit bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b
    ```
 
-   Then in the extension: 学习中心 → 查词 → 离线词典 → 从 LocaLingo 服务器安装 (no
-   account needed), or 从文件导入 →
+   The extension installs the base package by itself from the LocaLingo server right
+   after installation (no account needed; progress in the popup and on 学习中心 → 查词).
+   To install another package: 学习中心 → 查词 → 离线词典, or 从文件导入 →
    `data/dist/localingo-dict-ecdict-base-bc015ed.jsonl.gz` (≈8 MB, 149k entries, a few
    seconds).
 2. **Account.** Translation and lookup run locally without an account. The vocabulary
@@ -256,7 +257,8 @@ script and content scripts against a mocked `chrome.*` (it imports the dictionar
 from `data/dist/`); `extension/learn.html?harness` and `extension/sidepanel.html?harness`
 open the learning pages the same way (signed in to a fake account server; add
 `&signedout` to start signed out). `tests/browser/login-harness.html` checks the
-sign-in gate, and `tests/browser/chat-harness.html` checks a streaming AI chat page
+sign-in gate, `tests/browser/dict-harness.html` the automatic dictionary install (fresh
+profile), and `tests/browser/chat-harness.html` checks a streaming AI chat page
 (React-style node patching, mid-answer pauses, composer and dialogs). See
 [the UI and interaction review](docs/UX_REVIEW.md) for implemented improvements,
 known limitations, and the next priorities. Reload the unpacked extension after

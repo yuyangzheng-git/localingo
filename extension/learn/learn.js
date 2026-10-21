@@ -723,7 +723,7 @@ async function loadDictionary() {
   const info = await env.dictionary.info();
   $("dictStatus").textContent = info
     ? `已安装：${info.package_id}（${info.entries?.toLocaleString()} 个词条，ECDICT ${String(info.source_version).slice(0, 7)}），导入于 ${fmtDay.format(new Date(info.imported_at))}。`
-    : "尚未安装离线词典。可以从 LocaLingo 服务器安装（无需登录），或导入词典包文件（.jsonl.gz）。安装后查词完全在本机完成。";
+    : await autoInstallText();
   $("dictRemove").hidden = !info;
   try {
     // Dictionary packages are public: installing one needs no account.
@@ -735,6 +735,15 @@ async function loadDictionary() {
   } catch {
     $("dictServerRow").hidden = true; // server unreachable: file import still works
   }
+}
+
+// The background installs the base package by itself; show where it is.
+async function autoInstallText() {
+  chrome.runtime.sendMessage({ type: "learning:install-dictionary" }).catch(() => {});
+  const { dictInstall: p } = await chrome.storage.local.get("dictInstall");
+  if (p?.state === "error") return `离线词典自动安装失败：${p.error}。可以点下方按钮重试，或导入词典包文件（.jsonl.gz）。`;
+  if (p?.state === "importing" && p.total) return `正在自动安装离线词典… ${Math.round((p.done / p.total) * 100)}%`;
+  return "正在自动下载离线词典（约 8 MB），完成后查词完全在本机进行。";
 }
 
 function dictApi() {
@@ -908,6 +917,7 @@ document.addEventListener("visibilitychange", async () => {
 if (isExtension) {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === "local" && (changes.syncLastAt || changes.syncLastError)) refreshSyncState();
+    if (area === "local" && changes.dictInstall && !$("page-lookup").hidden) loadDictionary();
     // Signed out elsewhere, or the server rejected the token.
     if (area === "local" && changes.syncToken && !changes.syncToken.newValue && signedIn) route();
   });
