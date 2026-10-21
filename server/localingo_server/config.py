@@ -30,6 +30,8 @@ class Settings:
         default_factory=lambda: [o.strip() for o in os.environ.get("LOCALINGO_CORS_ORIGINS", "").split(",") if o.strip()]
     )
     token_days: int = field(default_factory=lambda: int(os.environ.get("LOCALINGO_TOKEN_DAYS", "180")))
+    # Empty = SQLite at data/localingo.db; set e.g. mysql://user:pass@host:3306/localingo for MySQL.
+    mysql_url: str = field(default_factory=lambda: os.environ.get("LOCALINGO_MYSQL_URL", ""))
 
     @property
     def db_path(self) -> Path:

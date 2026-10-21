@@ -47,6 +47,23 @@ def settings(tmp_path):
 
 @pytest.fixture
 def client(settings):
+    if settings.mysql_url:
+        # Shared MySQL backend: reset tables so tests stay independent
+        # (each test would otherwise see the previous test's users and tokens).
+        import pymysql
+        from urllib.parse import urlparse
+
+        u = urlparse(settings.mysql_url)
+        conn = pymysql.connect(
+            host=u.hostname, port=u.port or 3306, user=u.username, password=u.password or "",
+            database=(u.path or "/").lstrip("/"), charset="utf8mb4", autocommit=True,
+        )
+        with conn.cursor() as cur:
+            cur.execute("SET FOREIGN_KEY_CHECKS=0")
+            for t in ("tokens", "records", "user_seq", "users"):
+                cur.execute(f"TRUNCATE TABLE {t}")
+            cur.execute("SET FOREIGN_KEY_CHECKS=1")
+        conn.close()
     with TestClient(create_app(settings)) as c:
         yield c
 

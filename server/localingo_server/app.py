@@ -48,7 +48,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        db = Database(settings.db_path)
+        db = Database(settings.db_path, mysql_url=settings.mysql_url)
         dictionary = Dictionary(settings.dict_db_path, settings.dict_dir, settings.dict_variant)
         try:
             active = dictionary.ensure_loaded()
